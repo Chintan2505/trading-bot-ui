@@ -728,7 +728,7 @@ export default function TradingView({
             </div>
 
             {/* P&L Stats Panel */}
-            <PnLStatsPanel stats={tradeStats} />
+            {/* <PnLStatsPanel stats={tradeStats} /> */}
 
             {/* Activity Feed — natural height, scrolls with whole panel */}
             <div className="flex flex-col flex-shrink-0">
