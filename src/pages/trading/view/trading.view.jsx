@@ -210,6 +210,8 @@ export default function TradingView({
   handleScalpSettingChange,
   handleManualClose,
   handleManualTestBuy,
+  learnedMinScore,
+  learningStats,
   handlePeriodSelect,
   handleFilterChange,
   handleResetFilters,
@@ -741,6 +743,67 @@ export default function TradingView({
                     <span className="text-gold font-bold">CLIENT-SIDE MONITOR</span>
                   </div>
                 </div>
+
+                {/* ── Smart features toggles ── */}
+                <div className="p-2 rounded-lg bg-terminal-bg border border-terminal-border space-y-2">
+                  <label className="flex items-center justify-between cursor-pointer text-[10px]">
+                    <div className="flex flex-col">
+                      <span className="text-gray-300 font-semibold">🔒 Trailing Stop</span>
+                      <span className="text-[8px] text-gray-600">Move SL to break-even at half-TP</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={!!scalpSettings.trailingStopEnabled}
+                      onChange={(e) => handleScalpSettingChange('trailingStopEnabled', e.target.checked)}
+                      className="w-4 h-4 accent-gold cursor-pointer"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between cursor-pointer text-[10px]">
+                    <div className="flex flex-col">
+                      <span className="text-gray-300 font-semibold">🧠 Self-Learning</span>
+                      <span className="text-[8px] text-gray-600">Auto-tune score threshold from history</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={!!scalpSettings.selfLearningEnabled}
+                      onChange={(e) => handleScalpSettingChange('selfLearningEnabled', e.target.checked)}
+                      className="w-4 h-4 accent-gold cursor-pointer"
+                    />
+                  </label>
+                </div>
+
+                {/* ── Learning Engine Stats ── */}
+                {scalpSettings.selfLearningEnabled && (
+                  <div className="p-2 rounded-lg bg-blue-500/5 border border-blue-500/20 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-blue-400 font-bold uppercase tracking-wider">🧠 Adaptive Engine</span>
+                      <span className="text-[9px] font-mono text-blue-300">
+                        Min Score: <span className="font-bold text-blue-200">{learnedMinScore}/4</span>
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 text-[8px] font-mono">
+                      {[2, 3, 4].map(score => {
+                        const stats = learningStats?.byScore?.[score] || { wins: 0, losses: 0 };
+                        const total = stats.wins + stats.losses;
+                        const wr = total > 0 ? (stats.wins / total) * 100 : null;
+                        const wrColor = wr === null ? 'text-gray-600' : wr >= 50 ? 'text-bull' : 'text-bear';
+                        return (
+                          <div key={score} className="bg-terminal-bg rounded px-1 py-0.5 border border-terminal-border">
+                            <div className="text-gray-500">Score {score}</div>
+                            <div className={`font-bold ${wrColor}`}>
+                              {wr === null ? '—' : `${wr.toFixed(0)}%`}
+                            </div>
+                            <div className="text-gray-600">{total} trade{total === 1 ? '' : 's'}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[8px] text-gray-600 text-center">
+                      Sample: {learningStats?.sampleSize || 0} closed
+                      {learningStats?.lastTunedAt && ` · Tuned ${new Date(learningStats.lastTunedAt).toLocaleTimeString()}`}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

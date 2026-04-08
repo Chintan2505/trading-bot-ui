@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Chart from '@/components/Chart';
-import { getHistoricalCandles } from '@/services/api';
+import { getHistoricalCandles, getTradeStats } from '@/services/api';
 import { socket, subscribeToSymbol, toggleAutoTrade, changeStrategy, updateScalpingSettings, getScalpingSettings, manualClosePosition, manualTestBuy } from '@/services/socket';
 import { toast } from 'sonner';
 import TradingView from '../view/trading.view';
@@ -113,6 +113,16 @@ export default function TradingContainer() {
     stopLossPct: '0.3',
     qty: '0.001',
     cooldownMs: '3000',
+    trailingStopEnabled: true,
+    selfLearningEnabled: true,
+  });
+
+  // Self-learning engine state
+  const [learnedMinScore, setLearnedMinScore] = useState(2);
+  const [learningStats, setLearningStats] = useState({
+    byScore: { 2: { wins: 0, losses: 0 }, 3: { wins: 0, losses: 0 }, 4: { wins: 0, losses: 0 } },
+    sampleSize: 0,
+    lastTunedAt: null,
   });
   const [scalpPositionState, setScalpPositionState] = useState({ isOpen: false, pendingOrder: false });
   const [activeScalpLevels, setActiveScalpLevels] = useState(null); // { entry, tp, sl, side }
@@ -341,6 +351,8 @@ export default function TradingContainer() {
         stopLossPct: ((data.stopLossPct ?? 0.003) * 100).toString(),
         qty: (data.qty ?? 0.001).toString(),
         cooldownMs: (data.cooldownMs ?? 3000).toString(),
+        trailingStopEnabled: data.trailingStopEnabled !== false,
+        selfLearningEnabled: data.selfLearningEnabled !== false,
       });
     };
 
@@ -418,9 +430,13 @@ export default function TradingContainer() {
             stopLossPct: ((state.scalpSettings.stopLossPct ?? 0.003) * 100).toString(),
             qty: (state.scalpSettings.qty ?? 0.001).toString(),
             cooldownMs: (state.scalpSettings.cooldownMs ?? 3000).toString(),
+            trailingStopEnabled: state.scalpSettings.trailingStopEnabled !== false,
+            selfLearningEnabled: state.scalpSettings.selfLearningEnabled !== false,
           });
         }
       }
+      if (typeof state.learnedMinScore === 'number') setLearnedMinScore(state.learnedMinScore);
+      if (state.learningStats) setLearningStats(state.learningStats);
       if (state.position?.isOpen) {
         setScalpPositionState({ isOpen: true, pendingOrder: false });
         setActiveScalpLevels({
@@ -496,6 +512,38 @@ export default function TradingContainer() {
       });
     };
 
+    // Trailing stop fired — backend moved SL to break-even. Update chart line
+    // and the position panel without closing the position.
+    const onPositionUpdated = (data) => {
+      if (typeof data.stopLossPrice !== 'number') return;
+      setActiveScalpLevels(prev => prev ? { ...prev, sl: data.stopLossPrice } : prev);
+      setTradeLogs(prev => prev.map(log =>
+        log.orderId && log.orderId === data.orderId
+          ? { ...log, stopLossPrice: data.stopLossPrice }
+          : log
+      ));
+      if (data.reason === 'TRAILING_BREAK_EVEN') {
+        toast.success('🔒 Trailing stop armed', {
+          description: `SL moved to break-even @ $${data.stopLossPrice?.toFixed(2)} — no more losses on this trade`,
+        });
+      }
+    };
+
+    // Self-learning engine produced an updated threshold or stats
+    const onLearningUpdate = (data) => {
+      if (typeof data.learnedMinScore === 'number') {
+        setLearnedMinScore(prev => {
+          if (prev !== data.learnedMinScore) {
+            toast.info(`🧠 Score threshold ${prev} → ${data.learnedMinScore}`, {
+              description: 'Self-learning engine adjusted the minimum signal score',
+            });
+          }
+          return data.learnedMinScore;
+        });
+      }
+      if (data.learningStats) setLearningStats(data.learningStats);
+    };
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('bar_update', onBarUpdate);
@@ -509,6 +557,8 @@ export default function TradingContainer() {
     socket.on('bot_state', onBotState);
     socket.on('stream_status', onStreamStatus);
     socket.on('trade_error', onTradeError);
+    socket.on('position_updated', onPositionUpdated);
+    socket.on('learning_update', onLearningUpdate);
 
     changeStrategy('scalping');
     getScalpingSettings();
@@ -517,10 +567,9 @@ export default function TradingContainer() {
     // (avoids race where backend emits bot_state before frontend listens)
     socket.emit('request_bot_state');
 
-    // Fetch initial stats
-    fetch('http://localhost:5000/api/trades/stats')
-      .then(r => r.json())
-      .then(d => { if (d.success) setTradeStats(d.stats); })
+    // Fetch initial stats — uses VITE_API_URL via the shared axios client
+    getTradeStats()
+      .then(d => { if (d?.success) setTradeStats(d.stats); })
       .catch(() => {});
 
     return () => {
@@ -537,6 +586,8 @@ export default function TradingContainer() {
       socket.off('bot_state', onBotState);
       socket.off('stream_status', onStreamStatus);
       socket.off('trade_error', onTradeError);
+      socket.off('position_updated', onPositionUpdated);
+      socket.off('learning_update', onLearningUpdate);
     };
   }, []);
 
@@ -589,7 +640,7 @@ export default function TradingContainer() {
     setScalpSettings(updated);
     lastSettingsEditRef.current = Date.now();
 
-    // Only push to backend when every field is a valid positive number.
+    // Only push to backend when every numeric field is valid.
     const tp = parseFloat(updated.takeProfitPct);
     const sl = parseFloat(updated.stopLossPct);
     const qty = parseFloat(updated.qty);
@@ -601,6 +652,8 @@ export default function TradingContainer() {
       stopLossPct: sl / 100,
       qty,
       cooldownMs: cooldown,
+      trailingStopEnabled: !!updated.trailingStopEnabled,
+      selfLearningEnabled: !!updated.selfLearningEnabled,
     });
   };
 
@@ -702,6 +755,8 @@ export default function TradingContainer() {
       handleScalpSettingChange={handleScalpSettingChange}
       handleManualClose={handleManualClose}
       handleManualTestBuy={handleManualTestBuy}
+      learnedMinScore={learnedMinScore}
+      learningStats={learningStats}
       handlePeriodSelect={handlePeriodSelect}
       handleFilterChange={handleFilterChange}
       handleResetFilters={handleResetFilters}
