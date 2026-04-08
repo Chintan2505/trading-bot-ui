@@ -1,6 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { createChart, CandlestickSeries, HistogramSeries, CrosshairMode, createSeriesMarkers } from 'lightweight-charts';
 
+// IST offset in seconds (+5:30 = 19800s)
+const IST_OFFSET_SEC = 5.5 * 60 * 60;
+
 const CHART_COLORS = {
   bg: '#0c0f14',
   gridLine: '#161b27',
@@ -14,12 +17,13 @@ const CHART_COLORS = {
   volumeDown: '#ff497618',
 };
 
-export default function Chart({ data, liveBar, trades = [] }) {
+export default function Chart({ data, liveBar, trades = [], scalpLevels = null }) {
   const containerRef = useRef();
   const chartRef = useRef();
   const candleRef = useRef();
   const volumeRef = useRef();
   const markersRef = useRef(null);
+  const priceLinesRef = useRef([]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -57,10 +61,9 @@ export default function Chart({ data, liveBar, trades = [] }) {
         timeVisible: true,
         secondsVisible: false,
         borderColor: CHART_COLORS.border,
-        barSpacing: 10,
-        minBarSpacing: 4,
+        barSpacing: 8,
+        minBarSpacing: 2,
         rightOffset: 5,
-        fixLeftEdge: true,
       },
       rightPriceScale: {
         borderColor: CHART_COLORS.border,
@@ -92,14 +95,25 @@ export default function Chart({ data, liveBar, trades = [] }) {
     volumeRef.current = volume;
 
     if (data?.length > 0) {
-      const sorted = [...data].sort((a, b) => a.time - b.time);
+      // Shift timestamps to IST for display
+      const sorted = [...data]
+        .sort((a, b) => a.time - b.time)
+        .map(d => ({ ...d, time: d.time + IST_OFFSET_SEC }));
+
       candles.setData(sorted);
       volume.setData(sorted.map(d => ({
         time: d.time,
         value: d.volume || 0,
         color: d.close >= d.open ? CHART_COLORS.volumeUp : CHART_COLORS.volumeDown,
       })));
-      chart.timeScale().fitContent();
+
+      // For many bars (intraday), scroll to end and show ~2-3 hours
+      // For few bars (daily), fit all content
+      if (data.length > 200) {
+        chart.timeScale().scrollToRealTime();
+      } else {
+        chart.timeScale().fitContent();
+      }
     }
 
     const ro = new ResizeObserver(() => {
@@ -125,7 +139,7 @@ export default function Chart({ data, liveBar, trades = [] }) {
     const markers = trades
       .filter(t => t.time)
       .map(t => ({
-        time: t.time,
+        time: t.time + IST_OFFSET_SEC,
         position: t.decision === 'BUY' ? 'belowBar' : 'aboveBar',
         color: t.decision === 'BUY' ? CHART_COLORS.candleUp : CHART_COLORS.candleDown,
         shape: t.decision === 'BUY' ? 'arrowUp' : 'arrowDown',
@@ -139,15 +153,68 @@ export default function Chart({ data, liveBar, trades = [] }) {
     }
   }, [trades]);
 
+  // SL/TP price lines for active scalp position
+  useEffect(() => {
+    if (!candleRef.current) return;
+
+    // Remove existing lines
+    priceLinesRef.current.forEach(line => {
+      try { candleRef.current.removePriceLine(line); } catch { /* ignore */ }
+    });
+    priceLinesRef.current = [];
+
+    if (!scalpLevels) return;
+
+    const { entry, tp, sl, side } = scalpLevels;
+    const isBuy = side === 'BUY';
+
+    // Entry line (gold/yellow)
+    if (entry != null) {
+      priceLinesRef.current.push(candleRef.current.createPriceLine({
+        price: entry,
+        color: '#f0b90b',
+        lineWidth: 2,
+        lineStyle: 0, // solid
+        axisLabelVisible: true,
+        title: `ENTRY ${isBuy ? 'BUY' : 'SELL'}`,
+      }));
+    }
+
+    // Take Profit line (green)
+    if (tp != null) {
+      priceLinesRef.current.push(candleRef.current.createPriceLine({
+        price: tp,
+        color: CHART_COLORS.candleUp,
+        lineWidth: 2,
+        lineStyle: 2, // dashed
+        axisLabelVisible: true,
+        title: `TP $${tp.toFixed(2)}`,
+      }));
+    }
+
+    // Stop Loss line (red)
+    if (sl != null) {
+      priceLinesRef.current.push(candleRef.current.createPriceLine({
+        price: sl,
+        color: CHART_COLORS.candleDown,
+        lineWidth: 2,
+        lineStyle: 2, // dashed
+        axisLabelVisible: true,
+        title: `SL $${sl.toFixed(2)}`,
+      }));
+    }
+  }, [scalpLevels]);
+
   // Live updates
   useEffect(() => {
     if (!liveBar) return;
-    if (candleRef.current) candleRef.current.update(liveBar);
+    const shifted = { ...liveBar, time: liveBar.time + IST_OFFSET_SEC };
+    if (candleRef.current) candleRef.current.update(shifted);
     if (volumeRef.current) {
       volumeRef.current.update({
-        time: liveBar.time,
-        value: liveBar.volume || 0,
-        color: liveBar.close >= liveBar.open ? CHART_COLORS.volumeUp : CHART_COLORS.volumeDown,
+        time: shifted.time,
+        value: shifted.volume || 0,
+        color: shifted.close >= shifted.open ? CHART_COLORS.volumeUp : CHART_COLORS.volumeDown,
       });
     }
   }, [liveBar]);

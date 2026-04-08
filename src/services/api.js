@@ -4,11 +4,6 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
-export const runBotStrategy = async () => {
-  const response = await api.get('/bot/run');
-  return response.data;
-};
-
 /**
  * Fetch historical candles with full Alpaca API options.
  * @param {string} symbol
@@ -21,27 +16,6 @@ export const getHistoricalCandles = async (symbol = 'AAPL', options = {}) => {
     if (params[key] === undefined || params[key] === '') delete params[key];
   });
   const response = await api.get('/bot/candles', { params });
-  return response.data;
-};
-
-/**
- * Fetch latest minute bar for one or more symbols.
- * @param {string} symbols  Comma-separated symbols (e.g. 'AAPL,TSLA,GOOGL')
- * @param {object} options  - { feed, currency }
- */
-export const getLatestBars = async (symbols = 'AAPL', options = {}) => {
-  const params = { symbols, ...options };
-  Object.keys(params).forEach(key => {
-    if (params[key] === undefined || params[key] === '') delete params[key];
-  });
-  const response = await api.get('/bot/candles/latest', { params });
-  return response.data;
-};
-
-export const getAIAnalysis = async (symbol = 'AAPL', timeframe = '1Min') => {
-  const response = await api.get('/bot/ai-analysis', {
-    params: { symbol, timeframe }
-  });
   return response.data;
 };
 
@@ -111,42 +85,6 @@ export const cancelOrder = async (id) => {
 
 export const cancelAllOrders = async () => {
   const response = await api.delete('/orders/cancel-all');
-  return response.data;
-};
-
-// ── Watchlists ──
-export const getWatchlists = async () => {
-  const response = await api.get('/watchlists');
-  return response.data;
-};
-
-export const getWatchlist = async (id) => {
-  const response = await api.get(`/watchlists/${id}`);
-  return response.data;
-};
-
-export const createWatchlist = async (name, symbols) => {
-  const response = await api.post('/watchlists', { name, symbols });
-  return response.data;
-};
-
-export const updateWatchlist = async (id, data) => {
-  const response = await api.put(`/watchlists/${id}`, data);
-  return response.data;
-};
-
-export const deleteWatchlist = async (id) => {
-  const response = await api.delete(`/watchlists/${id}`);
-  return response.data;
-};
-
-export const addSymbolToWatchlist = async (id, symbol) => {
-  const response = await api.post(`/watchlists/${id}/symbols`, { symbol });
-  return response.data;
-};
-
-export const removeSymbolFromWatchlist = async (id, symbol) => {
-  const response = await api.delete(`/watchlists/${id}/symbols/${symbol}`);
   return response.data;
 };
 

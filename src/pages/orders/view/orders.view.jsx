@@ -1,12 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { getOrders, placeOrder, cancelOrder, cancelAllOrders } from '@/services/api';
-import { toast } from 'sonner';
+import React from 'react';
 import {
   ClipboardList, RefreshCw, Plus, X, Send,
-  ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 
-const STATUS_TABS = ['all', 'open', 'filled', 'canceled'];
 const STATUS_COLORS = {
   new: 'bg-gold/10 text-gold',
   accepted: 'bg-gold/10 text-gold',
@@ -18,89 +14,22 @@ const STATUS_COLORS = {
   pending_new: 'bg-gold/10 text-gold',
 };
 
-export default function OrdersPage() {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('all');
-  const [showForm, setShowForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [cancellingId, setCancellingId] = useState(null);
-
-  const [form, setForm] = useState({
-    symbol: '', qty: '', side: 'buy', type: 'market',
-    time_in_force: 'day', limit_price: '', stop_price: '',
-  });
-
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
-    try {
-      const status = activeTab === 'open' ? 'open' : activeTab === 'filled' ? 'closed' : activeTab === 'canceled' ? 'closed' : 'all';
-      const data = await getOrders(status, 100);
-      if (data.success) {
-        let filtered = data.orders || [];
-        if (activeTab === 'filled') filtered = filtered.filter(o => o.status === 'filled');
-        if (activeTab === 'canceled') filtered = filtered.filter(o => o.status === 'canceled');
-        setOrders(filtered);
-      }
-    } catch (err) {
-      toast.error('Failed to load orders');
-    } finally {
-      setLoading(false);
-    }
-  }, [activeTab]);
-
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
-
-  const handlePlace = async (e) => {
-    e.preventDefault();
-    if (!form.symbol || !form.qty) {
-      toast.error('Symbol and quantity are required');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const orderData = {
-        symbol: form.symbol.toUpperCase(),
-        qty: parseFloat(form.qty),
-        side: form.side,
-        type: form.type,
-        time_in_force: form.time_in_force,
-      };
-      if (form.type === 'limit' || form.type === 'stop_limit') {
-        orderData.limit_price = parseFloat(form.limit_price);
-      }
-      if (form.type === 'stop' || form.type === 'stop_limit') {
-        orderData.stop_price = parseFloat(form.stop_price);
-      }
-      const data = await placeOrder(orderData);
-      if (data.success) {
-        toast.success(`Order placed: ${form.side.toUpperCase()} ${form.qty} ${form.symbol.toUpperCase()}`);
-        setShowForm(false);
-        setForm({ symbol: '', qty: '', side: 'buy', type: 'market', time_in_force: 'day', limit_price: '', stop_price: '' });
-        fetchOrders();
-      }
-    } catch (err) {
-      toast.error('Failed to place order');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleCancel = async (id) => {
-    setCancellingId(id);
-    try {
-      const data = await cancelOrder(id);
-      if (data.success) {
-        toast.success('Order cancelled');
-        fetchOrders();
-      }
-    } catch (err) {
-      toast.error('Failed to cancel order');
-    } finally {
-      setCancellingId(null);
-    }
-  };
-
+export default function OrdersView({
+  orders,
+  loading,
+  activeTab,
+  setActiveTab,
+  showForm,
+  setShowForm,
+  submitting,
+  cancellingId,
+  form,
+  handleFormChange,
+  fetchOrders,
+  handlePlace,
+  handleCancel,
+  statusTabs,
+}) {
   return (
     <div className="flex-1 overflow-y-auto">
       {/* Header */}
@@ -137,19 +66,19 @@ export default function OrdersPage() {
             </button>
           </div>
           <form onSubmit={handlePlace} className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <FormField label="Symbol" value={form.symbol} onChange={v => setForm(f => ({ ...f, symbol: v.toUpperCase() }))} placeholder="AAPL" />
-            <FormField label="Quantity" type="number" value={form.qty} onChange={v => setForm(f => ({ ...f, qty: v }))} placeholder="1" />
-            <FormSelect label="Side" value={form.side} onChange={v => setForm(f => ({ ...f, side: v }))}
+            <FormField label="Symbol" value={form.symbol} onChange={v => handleFormChange('symbol', v.toUpperCase())} placeholder="AAPL" />
+            <FormField label="Quantity" type="number" value={form.qty} onChange={v => handleFormChange('qty', v)} placeholder="1" />
+            <FormSelect label="Side" value={form.side} onChange={v => handleFormChange('side', v)}
               options={[['buy', 'Buy'], ['sell', 'Sell']]} />
-            <FormSelect label="Type" value={form.type} onChange={v => setForm(f => ({ ...f, type: v }))}
+            <FormSelect label="Type" value={form.type} onChange={v => handleFormChange('type', v)}
               options={[['market', 'Market'], ['limit', 'Limit'], ['stop', 'Stop'], ['stop_limit', 'Stop Limit']]} />
-            <FormSelect label="Time in Force" value={form.time_in_force} onChange={v => setForm(f => ({ ...f, time_in_force: v }))}
+            <FormSelect label="Time in Force" value={form.time_in_force} onChange={v => handleFormChange('time_in_force', v)}
               options={[['day', 'Day'], ['gtc', 'GTC'], ['ioc', 'IOC'], ['fok', 'FOK']]} />
             {(form.type === 'limit' || form.type === 'stop_limit') && (
-              <FormField label="Limit Price" type="number" value={form.limit_price} onChange={v => setForm(f => ({ ...f, limit_price: v }))} placeholder="0.00" />
+              <FormField label="Limit Price" type="number" value={form.limit_price} onChange={v => handleFormChange('limit_price', v)} placeholder="0.00" />
             )}
             {(form.type === 'stop' || form.type === 'stop_limit') && (
-              <FormField label="Stop Price" type="number" value={form.stop_price} onChange={v => setForm(f => ({ ...f, stop_price: v }))} placeholder="0.00" />
+              <FormField label="Stop Price" type="number" value={form.stop_price} onChange={v => handleFormChange('stop_price', v)} placeholder="0.00" />
             )}
             <div className="col-span-full flex gap-2 mt-1">
               <button
@@ -167,7 +96,7 @@ export default function OrdersPage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-1 px-6 py-3 border-b border-terminal-border">
-        {STATUS_TABS.map(tab => (
+        {statusTabs.map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}

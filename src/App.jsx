@@ -4,13 +4,12 @@ import { Toaster } from 'sonner'
 import { SocketProvider } from '@/context/SocketContext'
 import { AccountProvider } from '@/context/AccountContext'
 import AppLayout from '@/layouts/AppLayout'
-import RealTimeDashboard from '@/pages/RealTimeDashboard'
-import DashboardPage from '@/pages/DashboardPage'
-import PortfolioPage from '@/pages/PortfolioPage'
-import OrdersPage from '@/pages/OrdersPage'
-import TradeHistoryPage from '@/pages/TradeHistoryPage'
-import WatchlistPage from '@/pages/WatchlistPage'
-import AccountPage from '@/pages/AccountPage'
+import DashboardPage from '@/pages/dashboard/container/dashboard.container'
+import RealTimeDashboard from '@/pages/trading/container/trading.container'
+import PortfolioPage from '@/pages/portfolio/container/portfolio.container'
+import OrdersPage from '@/pages/orders/container/orders.container'
+import TradeHistoryPage from '@/pages/trade-history/container/trade-history.container'
+import AccountPage from '@/pages/account/container/account.container'
 
 function App() {
   return (
@@ -23,7 +22,6 @@ function App() {
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/history" element={<TradeHistoryPage />} />
-          <Route path="/watchlists" element={<WatchlistPage />} />
           <Route path="/account" element={<AccountPage />} />
         </Route>
       </Routes>

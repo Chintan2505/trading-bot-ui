@@ -1,40 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { getTrades, getTradeStats } from '@/services/api';
-import { toast } from 'sonner';
+import React from 'react';
 import { History, ChevronLeft, ChevronRight, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 
-export default function TradeHistoryPage() {
-  const [trades, setTrades] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState({ symbol: '', decision: '' });
-  const limit = 20;
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [tradesRes, statsRes] = await Promise.all([
-        getTrades(page, limit, filters),
-        getTradeStats(),
-      ]);
-      if (tradesRes.success) {
-        setTrades(tradesRes.trades);
-        setTotal(tradesRes.total || 0);
-      }
-      if (statsRes.success) setStats(statsRes.stats);
-    } catch {
-      toast.error('Failed to load trade history');
-    } finally {
-      setLoading(false);
-    }
-  }, [page, filters]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const totalPages = Math.ceil(total / limit) || 1;
-
+export default function TradeHistoryView({
+  trades,
+  stats,
+  loading,
+  page,
+  setPage,
+  total,
+  totalPages,
+  filters,
+  handleFilterChange,
+}) {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="flex items-center justify-between px-6 py-4 border-b border-terminal-border">
@@ -74,13 +51,13 @@ export default function TradeHistoryPage() {
         <input
           type="text"
           value={filters.symbol}
-          onChange={(e) => { setFilters(f => ({ ...f, symbol: e.target.value.toUpperCase() })); setPage(1); }}
+          onChange={(e) => handleFilterChange('symbol', e.target.value.toUpperCase())}
           placeholder="Filter by symbol..."
           className="bg-terminal-bg border border-terminal-border rounded-lg px-2.5 py-1.5 text-[12px] text-white placeholder:text-gray-600 focus:outline-none focus:border-gold/50 w-40"
         />
         <select
           value={filters.decision}
-          onChange={(e) => { setFilters(f => ({ ...f, decision: e.target.value })); setPage(1); }}
+          onChange={(e) => handleFilterChange('decision', e.target.value)}
           className="bg-terminal-bg border border-terminal-border rounded-lg px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-gold/50 appearance-none cursor-pointer"
         >
           <option value="">All Decisions</option>

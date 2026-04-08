@@ -1,18 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { useAccount } from '@/context/AccountContext';
-import { getAccountConfig } from '@/services/api';
+import React from 'react';
 import { User, Shield, DollarSign, RefreshCw } from 'lucide-react';
 
-export default function AccountPage() {
-  const { account, isLoading, refresh } = useAccount();
-  const [config, setConfig] = useState(null);
-
-  useEffect(() => {
-    getAccountConfig().then(data => {
-      if (data.success) setConfig(data.config);
-    }).catch(() => {});
-  }, []);
-
+export default function AccountView({ account, isLoading, refresh, config }) {
   const fmt = (val) => val != null ? parseFloat(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
 
   return (

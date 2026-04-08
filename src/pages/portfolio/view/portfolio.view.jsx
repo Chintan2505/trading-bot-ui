@@ -1,62 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { getPositions, closePosition, closeAllPositions } from '@/services/api';
-import { toast } from 'sonner';
+import React from 'react';
 import {
   Briefcase, RefreshCw, X, AlertTriangle,
   ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
 
-export default function PortfolioPage() {
-  const [positions, setPositions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [closingSymbol, setClosingSymbol] = useState(null);
-  const [showCloseAllConfirm, setShowCloseAllConfirm] = useState(false);
-
-  const fetchPositions = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await getPositions();
-      if (data.success) setPositions(data.positions);
-    } catch (err) {
-      toast.error('Failed to load positions');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchPositions(); }, [fetchPositions]);
-
-  const handleClose = async (symbol) => {
-    setClosingSymbol(symbol);
-    try {
-      const data = await closePosition(symbol);
-      if (data.success) {
-        toast.success(`Closed position: ${symbol}`);
-        fetchPositions();
-      }
-    } catch (err) {
-      toast.error(`Failed to close ${symbol}`);
-    } finally {
-      setClosingSymbol(null);
-    }
-  };
-
-  const handleCloseAll = async () => {
-    setShowCloseAllConfirm(false);
-    try {
-      const data = await closeAllPositions();
-      if (data.success) {
-        toast.success('All positions closed');
-        fetchPositions();
-      }
-    } catch (err) {
-      toast.error('Failed to close all positions');
-    }
-  };
-
-  const totalPL = positions.reduce((sum, p) => sum + parseFloat(p.unrealized_pl || 0), 0);
-  const totalValue = positions.reduce((sum, p) => sum + parseFloat(p.market_value || 0), 0);
-
+export default function PortfolioView({
+  positions,
+  loading,
+  closingSymbol,
+  showCloseAllConfirm,
+  setShowCloseAllConfirm,
+  fetchPositions,
+  handleClose,
+  handleCloseAll,
+  totalPL,
+  totalValue,
+}) {
   return (
     <div className="flex-1 overflow-y-auto">
       {/* Header */}

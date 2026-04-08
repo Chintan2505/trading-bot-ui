@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, BarChart3, Briefcase, ClipboardList,
-  History, Star, User, PanelLeftClose, PanelLeftOpen, GripVertical
+  History, User, PanelLeftClose, PanelLeftOpen, GripVertical
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -11,7 +11,6 @@ const NAV_ITEMS = [
   { path: '/portfolio', label: 'Portfolio', icon: Briefcase },
   { path: '/orders', label: 'Orders', icon: ClipboardList },
   { path: '/history', label: 'History', icon: History },
-  { path: '/watchlists', label: 'Watchlists', icon: Star },
   { path: '/account', label: 'Account', icon: User },
 ];
 

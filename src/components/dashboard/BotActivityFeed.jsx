@@ -1,17 +1,9 @@
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
 import { format } from 'date-fns';
 import { ArrowUpRight, ArrowDownRight, Eye, Zap, Shield, BarChart3 } from 'lucide-react';
 
 export default function BotActivityFeed({ activities }) {
-  const scrollRef = useRef(null);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = 0;
-    }
-  }, [activities.length]);
-
-  if (activities.length === 0) {
+  if (!activities || activities.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-gray-600">
         <Eye className="w-5 h-5 mb-2 text-gray-700" />
@@ -21,7 +13,7 @@ export default function BotActivityFeed({ activities }) {
   }
 
   return (
-    <div ref={scrollRef} className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+    <div className="space-y-1.5">
       {activities.map((item) => (
         <ActivityItem key={item.id} item={item} />
       ))}

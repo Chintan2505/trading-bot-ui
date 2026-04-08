@@ -1,0 +1,619 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import Chart from '@/components/Chart';
+import { getHistoricalCandles } from '@/services/api';
+import { socket, subscribeToSymbol, toggleAutoTrade, changeStrategy, updateScalpingSettings, getScalpingSettings, manualClosePosition } from '@/services/socket';
+import { toast } from 'sonner';
+import TradingView from '../view/trading.view';
+
+const PERIODS = [
+  { label: '1D', timeframe: '1Min', days: 1, buffer: 4 },
+  { label: '5D', timeframe: '5Min', days: 5, buffer: 4 },
+  { label: '1M', timeframe: '1Hour', days: 30, buffer: 2 },
+  { label: '3M', timeframe: '1Day', days: 90, buffer: 2 },
+  { label: '6M', timeframe: '1Day', days: 180, buffer: 2 },
+  { label: 'YTD', timeframe: '1Day', days: Math.ceil((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / 86400000), buffer: 2 },
+  { label: '1Y', timeframe: '1Day', days: 365, buffer: 2 },
+];
+const WATCHLIST = ['AAPL', 'TSLA', 'GOOGL', 'MSFT', 'AMZN', 'NVDA', 'META', 'BTC/USD', 'ETH/USD', 'LTC/USD'];
+
+// Crypto symbols contain a slash (e.g. "BTC/USD"). Crypto trades 24/7 — no market hours filtering.
+const isCrypto = (symbol) => typeof symbol === 'string' && symbol.includes('/');
+
+// US regular market: 9:30 AM – 4:00 PM ET = 13:30 – 20:00 UTC = 19:00 – 01:30 IST
+function getPeriodDates(period, symbol) {
+  const now = new Date();
+  const start = new Date(now.getTime() - (period.days + period.buffer) * 86400000).toISOString();
+
+  // Crypto: no market-hours logic, just go back N days from now
+  if (isCrypto(symbol)) {
+    return { start, end: '' };
+  }
+
+  let end = '';
+  if (period.timeframe.includes('Min') || period.timeframe === '1Hour') {
+    const utcH = now.getUTCHours();
+    const utcM = now.getUTCMinutes();
+    const beforeMarketOpen = utcH < 13 || (utcH === 13 && utcM < 30);
+    if (beforeMarketOpen) {
+      end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+    }
+  }
+
+  return { start, end };
+}
+
+// Filter bars to regular trading hours only (9:30 AM – 4:00 PM ET = 13:30 – 20:00 UTC)
+// Pre/post market has sparse data with gaps, regular hours have 1 bar per minute
+// Crypto is 24/7 → never filter
+function filterRegularHours(bars, symbol) {
+  if (isCrypto(symbol)) return bars;
+  return bars.filter(b => {
+    const d = new Date(b.time * 1000);
+    const totalMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+    return totalMin >= 810 && totalMin < 1200; // 13:30 (810min) to 20:00 (1200min) UTC
+  });
+}
+
+// Persist selected symbol + period across page refreshes
+const STORAGE_KEY = 'tradex.trading.selection';
+const loadSelection = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.symbol === 'string') return parsed;
+  } catch { /* ignore */ }
+  return null;
+};
+const saveSelection = (symbol, periodLabel) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ symbol, period: periodLabel }));
+  } catch { /* ignore */ }
+};
+
+export default function TradingContainer() {
+  // ── Core state ──
+  const persisted = loadSelection();
+  const initialSymbol = persisted?.symbol || 'AAPL';
+  const initialPeriodLabel = persisted?.period || '1D';
+  const initialPeriod = PERIODS.find(p => p.label === initialPeriodLabel) || PERIODS[0];
+
+  const [symbol, setSymbol] = useState(initialSymbol);
+  const [activeSymbol, setActiveSymbol] = useState(initialSymbol);
+  const [timeframe, setTimeframe] = useState(initialPeriod.timeframe);
+  const [activePeriod, setActivePeriod] = useState(initialPeriod.label);
+  const [historicalData, setHistoricalData] = useState([]);
+  const [liveBar, setLiveBar] = useState(null);
+  const [prevBar, setPrevBar] = useState(null);
+  const [livePrice, setLivePrice] = useState(null); // ticks on every trade (sub-second updates)
+  const [isLoading, setIsLoading] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState(socket.connected ? 'connected' : 'disconnected');
+  const [isAutoTrading, setIsAutoTrading] = useState(false);
+  const [tradeLogs, setTradeLogs] = useState([]);
+  const [tradeMarkers, setTradeMarkers] = useState([]);
+  const [botActivities, setBotActivities] = useState([]);
+  const [strategyData, setStrategyData] = useState(null);
+
+  // ── UI state ──
+  const [activeTab, setActiveTab] = useState('chart');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [tradeFlash, setTradeFlash] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [leftSidebarOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    start: '', end: '', limit: '500', adjustment: 'raw', feed: 'iex', sort: 'desc', currency: 'USD',
+  });
+
+  // ── Scalping state ──
+  const [scalpSettings, setScalpSettings] = useState({
+    takeProfitPct: 0.5,
+    stopLossPct: 0.3,
+    qty: 1,
+    cooldownMs: 5000,
+  });
+  const [scalpPositionState, setScalpPositionState] = useState({ isOpen: false, pendingOrder: false });
+  const [activeScalpLevels, setActiveScalpLevels] = useState(null); // { entry, tp, sl, side }
+  const [tradeStats, setTradeStats] = useState(null); // { totalPnl, winRate, ... }
+
+  const searchRef = useRef(null);
+  // Mirror activeSymbol in a ref so socket callbacks always see the latest value
+  const activeSymbolRef = useRef(activeSymbol);
+  useEffect(() => { activeSymbolRef.current = activeSymbol; }, [activeSymbol]);
+
+  // ── Derived values ──
+  // Prefer livePrice (sub-second trade ticks) > liveBar.close (per-minute) > last historical close
+  const currentPrice = livePrice?.price ?? liveBar?.close ?? historicalData[historicalData.length - 1]?.close ?? 0;
+  const prevPrice = prevBar?.close ?? historicalData[historicalData.length - 1]?.close ?? currentPrice;
+  const priceChange = currentPrice - prevPrice;
+  const priceChangePct = prevPrice !== 0 ? ((priceChange / prevPrice) * 100) : 0;
+  const isUp = priceChange >= 0;
+
+  // ── Data loading ──
+  const initMarketData = useCallback(async (sym, tf, filterOverrides = {}) => {
+    setIsLoading(true);
+    // Clear stale live data from previous symbol so chart never shows wrong prices
+    setLiveBar(null);
+    setPrevBar(null);
+    setLivePrice(null);
+    setHistoricalData([]);
+    try {
+      const opts = {
+        timeframe: tf,
+        limit: parseInt(filterOverrides.limit || filters.limit, 10) || 500,
+        adjustment: filterOverrides.adjustment || filters.adjustment,
+        feed: filterOverrides.feed || filters.feed,
+        sort: filterOverrides.sort || filters.sort,
+        currency: filterOverrides.currency || filters.currency,
+      };
+      const start = filterOverrides.start ?? filters.start;
+      const end = filterOverrides.end ?? filters.end;
+      if (start) opts.start = start;
+      if (end) opts.end = end;
+
+      const response = await getHistoricalCandles(sym, opts);
+      if (response.success) {
+        // For intraday timeframes, filter to regular trading hours only (no pre/post market gaps)
+        const bars = tf.includes('Min') ? filterRegularHours(response.bars, sym) : response.bars;
+        if (bars.length === 0) {
+          toast.warning(`No data for ${sym}`, {
+            description: 'Market may be closed or no bars in this range. Try a wider period or different symbol.',
+          });
+        }
+        setHistoricalData(bars);
+        setActiveSymbol(sym);
+        setTradeMarkers([]);
+        setBotActivities([]);
+        subscribeToSymbol(sym);
+      } else {
+        toast.error(`Failed to load ${sym}`, { description: response.error || 'Unknown error' });
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || 'Network error';
+      toast.error(`Failed to load ${sym}`, { description: msg });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [filters]);
+
+  // ── Load initial market data (uses persisted symbol + period) ──
+  const initRef = useRef(false);
+  useEffect(() => {
+    if (!initRef.current) {
+      initRef.current = true;
+      const period = PERIODS.find(p => p.label === activePeriod) || PERIODS[0];
+      const { start, end } = getPeriodDates(period, activeSymbol);
+      initMarketData(activeSymbol, period.timeframe, { start, end });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist the selection whenever symbol or period changes
+  useEffect(() => {
+    saveSelection(activeSymbol, activePeriod);
+  }, [activeSymbol, activePeriod]);
+
+  // ── Socket.IO setup ──
+  useEffect(() => {
+    if (socket.connected) setConnectionStatus('connected');
+
+    const onConnect = () => {
+      setConnectionStatus('connected');
+      // Re-tell backend which symbol we want (handles backend restart / reconnect)
+      const sym = activeSymbolRef.current;
+      if (sym) {
+        console.log('[Socket] Reconnected — re-subscribing to', sym);
+        subscribeToSymbol(sym);
+      }
+      // Request fresh bot state (in case backend restarted while we were away)
+      socket.emit('request_bot_state');
+    };
+    const onDisconnect = () => setConnectionStatus('disconnected');
+    const onBarUpdate = (bar) => {
+      // Reject bars that belong to a different symbol than the one currently active
+      if (bar.symbol && activeSymbolRef.current && bar.symbol !== activeSymbolRef.current) return;
+      setPrevBar(prev => prev || bar);
+      setLiveBar(current => {
+        setPrevBar(current);
+        return bar;
+      });
+    };
+    const onPriceUpdate = (data) => {
+      // High-frequency trade ticks (sub-second updates for the price ticker)
+      if (data.symbol && activeSymbolRef.current && data.symbol !== activeSymbolRef.current) return;
+      if (typeof data.price === 'number') {
+        setLivePrice({ price: data.price, time: data.time });
+      }
+    };
+
+    const onStrategyUpdate = (data) => {
+      setStrategyData(data);
+      if (data.positionState) {
+        setScalpPositionState(data.positionState);
+      }
+
+      if (data.strategyType === 'scalping') {
+        if (data.crossover === 'NONE') {
+          setBotActivities(prev => {
+            const lastAnalysis = prev.find(a => a.type === 'analysis');
+            if (lastAnalysis && (Date.now() - lastAnalysis.rawTimestamp) < 25000) return prev;
+            return [{
+              id: `analysis-${Date.now()}`, type: 'analysis', decision: 'HOLD',
+              rsi: null, emaTrend: `EMA5: ${data.emaFast?.toFixed(2)} | EMA13: ${data.emaSlow?.toFixed(2)}`,
+              timestamp: Date.now(), rawTimestamp: Date.now(),
+            }, ...prev].slice(0, 30);
+          });
+        } else {
+          setBotActivities(prev => [{
+            id: `signal-${Date.now()}`, type: 'signal',
+            decision: data.crossover === 'BULLISH_CROSS' ? 'BUY' : 'SELL',
+            rsi: null, emaTrend: data.crossover, strength: data.strength,
+            timestamp: Date.now(), rawTimestamp: Date.now(),
+          }, ...prev].slice(0, 30));
+        }
+      } else {
+        if (data.rsiCrossover === 'NONE') {
+          setBotActivities(prev => {
+            const lastAnalysis = prev.find(a => a.type === 'analysis');
+            if (lastAnalysis && (Date.now() - lastAnalysis.rawTimestamp) < 25000) return prev;
+            return [{
+              id: `analysis-${Date.now()}`, type: 'analysis', decision: 'HOLD',
+              rsi: data.rsi?.toFixed(2), emaTrend: data.emaTrend,
+              timestamp: Date.now(), rawTimestamp: Date.now(),
+            }, ...prev].slice(0, 30);
+          });
+        } else {
+          setBotActivities(prev => [{
+            id: `signal-${Date.now()}`, type: 'signal', decision: data.rsiCrossover,
+            rsi: data.rsi?.toFixed(2), emaTrend: data.emaTrend, strength: data.strength,
+            timestamp: Date.now(), rawTimestamp: Date.now(),
+          }, ...prev].slice(0, 30));
+        }
+      }
+    };
+
+    const onTradeExecuted = (trade) => {
+      const now = Date.now();
+      const tradeTime = Math.floor(now / 1000);
+
+      setTradeLogs(prev => [{
+        id: now.toString(), timestamp: trade.timestamp || now, symbol: trade.symbol,
+        rsi: trade.rsi?.toFixed(2), decision: trade.decision, strength: trade.strength,
+        orderId: trade.orderId, strategy: trade.strategy,
+        entryPrice: trade.entryPrice, takeProfitPrice: trade.takeProfitPrice,
+        stopLossPrice: trade.stopLossPrice, qty: trade.qty,
+      }, ...prev].slice(0, 50));
+
+      setTradeMarkers(prev => [...prev, { time: tradeTime, decision: trade.decision }]);
+
+      // Set active SL/TP levels for chart price lines + immediately mark position open
+      if (trade.strategy === 'scalping' && trade.entryPrice) {
+        setActiveScalpLevels({
+          entry: trade.entryPrice,
+          tp: trade.takeProfitPrice,
+          sl: trade.stopLossPrice,
+          side: trade.decision,
+          qty: trade.qty,
+        });
+        // Immediately reflect open position in UI (don't wait for next strategy_update)
+        setScalpPositionState({ isOpen: true, pendingOrder: false });
+      }
+
+      setBotActivities(prev => [{
+        id: `trade-${now}`, type: 'trade', decision: trade.decision,
+        rsi: trade.rsi?.toFixed(2), emaTrend: trade.emaTrend,
+        strength: trade.strength, orderId: trade.orderId,
+        strategy: trade.strategy,
+        entryPrice: trade.entryPrice, takeProfitPrice: trade.takeProfitPrice,
+        stopLossPrice: trade.stopLossPrice,
+        timestamp: trade.timestamp || now, rawTimestamp: now,
+      }, ...prev].slice(0, 30));
+
+      setTradeFlash(trade.decision);
+      setTimeout(() => setTradeFlash(null), 1500);
+
+      const isBuy = trade.decision === 'BUY';
+      const isScalping = trade.strategy === 'scalping';
+      const desc = isScalping
+        ? `${trade.symbol} | Entry: $${trade.entryPrice?.toFixed(2)} | TP: $${trade.takeProfitPrice?.toFixed(2)} | SL: $${trade.stopLossPrice?.toFixed(2)}`
+        : `${trade.symbol} | RSI: ${trade.rsi?.toFixed(2)} | Strength: ${trade.strength}/3`;
+      toast[isBuy ? 'success' : 'error'](
+        `${trade.decision} Scalp Executed`,
+        { description: desc }
+      );
+    };
+
+    const onScalpingSettings = (data) => {
+      setScalpSettings({
+        takeProfitPct: (data.takeProfitPct || 0.005) * 100,
+        stopLossPct: (data.stopLossPct || 0.003) * 100,
+        qty: data.qty || 1,
+        cooldownMs: data.cooldownMs || 5000,
+      });
+    };
+
+    const onAutoTradeStopped = (data) => {
+      setIsAutoTrading(false);
+      if (data.reason === 'strategy_switch') {
+        toast.warning('Auto-trading stopped — strategy switched');
+      } else if (data.reason === 'daily_loss_limit') {
+        toast.error('Auto-trading stopped — daily loss limit reached');
+      }
+    };
+
+    const onPositionClosed = (data) => {
+      setScalpPositionState({ isOpen: false, pendingOrder: false });
+      setActiveScalpLevels(null);
+      const pnlText = typeof data.pnl === 'number'
+        ? `${data.pnl >= 0 ? '+' : ''}$${data.pnl.toFixed(2)} (${data.pnlPct?.toFixed(2)}%)`
+        : '';
+      const isWin = (data.pnl ?? 0) >= 0;
+      toast[isWin ? 'success' : 'error'](
+        `${data.result === 'TP_HIT' ? '🎯 TP HIT' : data.result === 'SL_HIT' ? '🛑 SL HIT' : 'Position closed'} — ${pnlText}`,
+        { description: `${data.side} @ entry $${data.entryPrice?.toFixed(2)} → exit $${data.exitPrice?.toFixed(2)}` }
+      );
+    };
+
+    const onTradeStats = (stats) => {
+      setTradeStats(stats);
+    };
+
+    // Server sends current state on connect — restore position, trades, stats after page reload
+    const onBotState = (state) => {
+      console.log('[Socket] bot_state received:', state);
+      if (state.isAutoTrading !== undefined) setIsAutoTrading(state.isAutoTrading);
+      if (state.scalpSettings) {
+        setScalpSettings({
+          takeProfitPct: (state.scalpSettings.takeProfitPct || 0.005) * 100,
+          stopLossPct: (state.scalpSettings.stopLossPct || 0.003) * 100,
+          qty: state.scalpSettings.qty || 0.001,
+          cooldownMs: state.scalpSettings.cooldownMs || 3000,
+        });
+      }
+      if (state.position?.isOpen) {
+        setScalpPositionState({ isOpen: true, pendingOrder: false });
+        setActiveScalpLevels({
+          entry: state.position.entryPrice,
+          tp: state.position.takeProfitPrice,
+          sl: state.position.stopLossPrice,
+          side: state.position.side,
+          qty: state.position.qty,
+        });
+      } else {
+        setScalpPositionState({ isOpen: false, pendingOrder: false });
+        setActiveScalpLevels(null);
+      }
+      if (state.stats) setTradeStats(state.stats);
+      if (Array.isArray(state.recentTrades)) {
+        const logs = state.recentTrades.map(t => ({
+          id: String(t._id),
+          timestamp: new Date(t.createdAt).getTime(),
+          symbol: t.symbol,
+          decision: t.decision,
+          strategy: t.strategy,
+          strength: t.signalStrength,
+          rsi: t.rsi?.toFixed?.(2),
+          orderId: t.orderId,
+          entryPrice: t.entryPrice,
+          takeProfitPrice: t.takeProfitPrice,
+          stopLossPrice: t.stopLossPrice,
+          exitPrice: t.exitPrice,
+          pnl: t.pnl,
+          pnlPct: t.pnlPct,
+          status: t.status,
+        }));
+        setTradeLogs(logs);
+      }
+    };
+
+    const onStreamStatus = (data) => {
+      // Only show errors for the currently active symbol
+      if (data.symbol && data.symbol !== activeSymbolRef.current) return;
+      if (data.status === 'unavailable' || data.status === 'error') {
+        toast.error(`Live data unavailable for ${data.symbol || 'symbol'}`, {
+          description: data.reason || 'Stream error',
+        });
+      } else if (data.status === 'disconnected') {
+        toast.warning(`Stream disconnected for ${data.symbol || 'symbol'}`, {
+          description: data.reason || 'Connection lost',
+        });
+      }
+    };
+
+    const onTradeError = (data) => {
+      toast.error(`Trade failed: ${data.symbol} ${data.decision}`, {
+        description: data.error,
+      });
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('bar_update', onBarUpdate);
+    socket.on('price_update', onPriceUpdate);
+    socket.on('strategy_update', onStrategyUpdate);
+    socket.on('trade_executed', onTradeExecuted);
+    socket.on('scalping_settings_updated', onScalpingSettings);
+    socket.on('auto_trade_stopped', onAutoTradeStopped);
+    socket.on('scalping_position_closed', onPositionClosed);
+    socket.on('trade_stats', onTradeStats);
+    socket.on('bot_state', onBotState);
+    socket.on('stream_status', onStreamStatus);
+    socket.on('trade_error', onTradeError);
+
+    changeStrategy('scalping');
+    getScalpingSettings();
+
+    // Explicitly request bot state now that all listeners are registered
+    // (avoids race where backend emits bot_state before frontend listens)
+    socket.emit('request_bot_state');
+
+    // Fetch initial stats
+    fetch('http://localhost:5000/api/trades/stats')
+      .then(r => r.json())
+      .then(d => { if (d.success) setTradeStats(d.stats); })
+      .catch(() => {});
+
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('bar_update', onBarUpdate);
+      socket.off('price_update', onPriceUpdate);
+      socket.off('strategy_update', onStrategyUpdate);
+      socket.off('trade_executed', onTradeExecuted);
+      socket.off('scalping_settings_updated', onScalpingSettings);
+      socket.off('auto_trade_stopped', onAutoTradeStopped);
+      socket.off('scalping_position_closed', onPositionClosed);
+      socket.off('trade_stats', onTradeStats);
+      socket.off('bot_state', onBotState);
+      socket.off('stream_status', onStreamStatus);
+      socket.off('trade_error', onTradeError);
+    };
+  }, []);
+
+  // ── Handlers ──
+  const handleSymbolSubmit = (e) => {
+    e.preventDefault();
+    if (symbol.trim()) {
+      const sym = symbol.toUpperCase();
+      const period = PERIODS.find(p => p.label === activePeriod) || PERIODS[0];
+      const { start, end } = getPeriodDates(period, sym);
+      initMarketData(sym, period.timeframe, { start, end });
+      setSearchOpen(false);
+    }
+  };
+
+  const handleWatchlistClick = (sym) => {
+    setSymbol(sym);
+    const period = PERIODS.find(p => p.label === activePeriod) || PERIODS[0];
+    const { start, end } = getPeriodDates(period, sym);
+    initMarketData(sym, period.timeframe, { start, end });
+  };
+
+  const handleToggleAutoTrade = () => {
+    const newState = !isAutoTrading;
+    setIsAutoTrading(newState);
+    toggleAutoTrade(newState);
+
+    setBotActivities(prev => [{
+      id: `toggle-${Date.now()}`, type: newState ? 'signal' : 'analysis',
+      decision: newState ? 'BUY' : 'HOLD', rsi: null,
+      timestamp: Date.now(), rawTimestamp: Date.now(),
+      emaTrend: newState ? 'BOT STARTED' : 'BOT STOPPED',
+    }, ...prev].slice(0, 30));
+
+    toast[newState ? 'success' : 'warning'](
+      newState ? 'Scalping Bot Activated' : 'Scalping Bot Deactivated',
+      { description: newState ? `Bot is now scalping ${activeSymbol}` : 'Bot stopped' }
+    );
+  };
+
+  const handleScalpSettingChange = (key, value) => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return;
+    const updated = { ...scalpSettings, [key]: num };
+    setScalpSettings(updated);
+    updateScalpingSettings({
+      takeProfitPct: updated.takeProfitPct / 100,
+      stopLossPct: updated.stopLossPct / 100,
+      qty: updated.qty,
+      cooldownMs: updated.cooldownMs,
+    });
+  };
+
+  const handleManualClose = () => {
+    manualClosePosition();
+    toast.info('Closing position...');
+  };
+
+  const handlePeriodSelect = (period) => {
+    const { start, end } = getPeriodDates(period, activeSymbol);
+    setTimeframe(period.timeframe);
+    setActivePeriod(period.label);
+    setFilters(f => ({ ...f, start, end }));
+    initMarketData(activeSymbol, period.timeframe, { start, end });
+  };
+
+  const handleFilterChange = (key, value) => {
+    setFilters(f => ({ ...f, [key]: value }));
+  };
+
+  const handleResetFilters = () => {
+    const defaults = { start: '', end: '', limit: '500', adjustment: 'raw', feed: 'sip', sort: 'desc', currency: 'USD' };
+    setFilters(defaults);
+    initMarketData(activeSymbol, timeframe, defaults);
+  };
+
+  const handleApplyFilters = () => {
+    initMarketData(activeSymbol, timeframe);
+  };
+
+  // Close search on click outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (searchOpen && searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [searchOpen]);
+
+  return (
+    <TradingView
+      // Core data
+      symbol={symbol}
+      setSymbol={setSymbol}
+      activeSymbol={activeSymbol}
+      timeframe={timeframe}
+      historicalData={historicalData}
+      liveBar={liveBar}
+      isLoading={isLoading}
+      connectionStatus={connectionStatus}
+      isAutoTrading={isAutoTrading}
+      tradeLogs={tradeLogs}
+      tradeMarkers={tradeMarkers}
+      botActivities={botActivities}
+      strategyData={strategyData}
+      // Derived
+      currentPrice={currentPrice}
+      priceChange={priceChange}
+      priceChangePct={priceChangePct}
+      isUp={isUp}
+      // UI state
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      searchOpen={searchOpen}
+      setSearchOpen={setSearchOpen}
+      tradeFlash={tradeFlash}
+      drawerOpen={drawerOpen}
+      setDrawerOpen={setDrawerOpen}
+      leftSidebarOpen={leftSidebarOpen}
+      filtersOpen={filtersOpen}
+      setFiltersOpen={setFiltersOpen}
+      filters={filters}
+      // Scalping
+      scalpSettings={scalpSettings}
+      scalpPositionState={scalpPositionState}
+      activeScalpLevels={activeScalpLevels}
+      tradeStats={tradeStats}
+      // Refs
+      searchRef={searchRef}
+      // Handlers
+      handleSymbolSubmit={handleSymbolSubmit}
+      handleWatchlistClick={handleWatchlistClick}
+      handleToggleAutoTrade={handleToggleAutoTrade}
+      handleScalpSettingChange={handleScalpSettingChange}
+      handleManualClose={handleManualClose}
+      handlePeriodSelect={handlePeriodSelect}
+      handleFilterChange={handleFilterChange}
+      handleResetFilters={handleResetFilters}
+      handleApplyFilters={handleApplyFilters}
+      // Constants
+      activePeriod={activePeriod}
+      periods={PERIODS}
+      watchlist={WATCHLIST}
+      // Components
+      Chart={Chart}
+    />
+  );
+}
