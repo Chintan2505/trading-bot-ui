@@ -209,6 +209,7 @@ export default function TradingView({
   handleToggleAutoTrade,
   handleScalpSettingChange,
   handleManualClose,
+  handleManualTestBuy,
   handlePeriodSelect,
   handleFilterChange,
   handleResetFilters,
@@ -595,6 +596,22 @@ export default function TradingView({
                 {isAutoTrading ? 'STOP SCALPING' : 'START SCALPING'}
               </button>
 
+              {/* Manual TEST BUY — places a market BUY at current price (for testing) */}
+              <button
+                onClick={handleManualTestBuy}
+                disabled={scalpPositionState.isOpen || scalpPositionState.pendingOrder || !currentPrice}
+                title={
+                  scalpPositionState.isOpen
+                    ? 'A position is already open — close it first'
+                    : !currentPrice
+                      ? 'Waiting for live price...'
+                      : `Place a test BUY at $${currentPrice?.toFixed(2)} with current TP/SL settings`
+                }
+                className="w-full mt-2 py-2 rounded-xl text-xs font-bold transition-all bg-blue-500/15 text-blue-400 border border-blue-500/30 hover:bg-blue-500/25 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+              >
+                🧪 TEST BUY {currentPrice ? `@ $${currentPrice.toFixed(2)}` : ''}
+              </button>
+
               <div className={`mt-2 flex items-center justify-center gap-1.5 text-[10px] ${
                 isAutoTrading ? 'text-bull' : 'text-gray-600'
               }`}>
@@ -698,7 +715,7 @@ export default function TradingView({
                       type="number"
                       value={scalpSettings.qty}
                       onChange={(e) => handleScalpSettingChange('qty', e.target.value)}
-                      min="0.00001" step="0.00001"
+                      step="any"
                       className="w-full bg-terminal-bg border border-terminal-border rounded-lg px-2.5 py-1.5 text-sm font-mono text-white focus:outline-none focus:border-gold/50 transition-colors"
                     />
                     {currentPrice > 0 && (

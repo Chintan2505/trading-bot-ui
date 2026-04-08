@@ -50,44 +50,16 @@ export function SocketProvider({ children }) {
       }
     };
 
-    const onTradeExecuted = (trade) => {
-      const now = Date.now();
-      const tradeTime = Math.floor(now / 1000);
-
-      setTradeLogs(prev => [{
-        id: now.toString(), timestamp: trade.timestamp || now, symbol: trade.symbol,
-        rsi: trade.rsi?.toFixed(2), decision: trade.decision, strength: trade.strength,
-        orderId: trade.orderId,
-      }, ...prev].slice(0, 50));
-
-      setTradeMarkers(prev => [...prev, { time: tradeTime, decision: trade.decision }]);
-
-      setBotActivities(prev => [{
-        id: `trade-${now}`, type: 'trade', decision: trade.decision,
-        rsi: trade.rsi?.toFixed(2), emaTrend: trade.emaTrend,
-        strength: trade.strength, orderId: trade.orderId,
-        timestamp: trade.timestamp || now, rawTimestamp: now,
-      }, ...prev].slice(0, 30));
-
-      const isBuy = trade.decision === 'BUY';
-      toast[isBuy ? 'success' : 'error'](
-        `${trade.decision} Signal Executed`,
-        { description: `${trade.symbol} | RSI: ${trade.rsi?.toFixed(2)} | Strength: ${trade.strength}/3` }
-      );
-    };
-
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('bar_update', onBarUpdate);
     socket.on('strategy_update', onStrategyUpdate);
-    socket.on('trade_executed', onTradeExecuted);
 
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
       socket.off('bar_update', onBarUpdate);
       socket.off('strategy_update', onStrategyUpdate);
-      socket.off('trade_executed', onTradeExecuted);
     };
   }, []);
 

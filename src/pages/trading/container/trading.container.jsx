@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Chart from '@/components/Chart';
 import { getHistoricalCandles } from '@/services/api';
-import { socket, subscribeToSymbol, toggleAutoTrade, changeStrategy, updateScalpingSettings, getScalpingSettings, manualClosePosition } from '@/services/socket';
+import { socket, subscribeToSymbol, toggleAutoTrade, changeStrategy, updateScalpingSettings, getScalpingSettings, manualClosePosition, manualTestBuy } from '@/services/socket';
 import { toast } from 'sonner';
 import TradingView from '../view/trading.view';
 
@@ -106,11 +106,13 @@ export default function TradingContainer() {
   });
 
   // ── Scalping state ──
+  // Stored as strings so the controlled inputs can hold partial typing
+  // like "0.", "" or "12." without being normalised by parseFloat.
   const [scalpSettings, setScalpSettings] = useState({
-    takeProfitPct: 0.5,
-    stopLossPct: 0.3,
-    qty: 1,
-    cooldownMs: 5000,
+    takeProfitPct: '0.5',
+    stopLossPct: '0.3',
+    qty: '0.001',
+    cooldownMs: '3000',
   });
   const [scalpPositionState, setScalpPositionState] = useState({ isOpen: false, pendingOrder: false });
   const [activeScalpLevels, setActiveScalpLevels] = useState(null); // { entry, tp, sl, side }
@@ -284,7 +286,14 @@ export default function TradingContainer() {
         stopLossPrice: trade.stopLossPrice, qty: trade.qty,
       }, ...prev].slice(0, 50));
 
-      setTradeMarkers(prev => [...prev, { time: tradeTime, decision: trade.decision }]);
+      // Dedupe by orderId so duplicate `trade_executed` events (StrictMode
+       // double-mount, server retries, etc.) don't stack multiple arrows on
+       // the same bar.
+      const markerKey = trade.orderId || `${trade.symbol}-${trade.decision}-${tradeTime}`;
+      setTradeMarkers(prev => {
+        if (prev.some(m => m.id === markerKey)) return prev;
+        return [...prev, { id: markerKey, time: tradeTime, decision: trade.decision }];
+      });
 
       // Set active SL/TP levels for chart price lines + immediately mark position open
       if (trade.strategy === 'scalping' && trade.entryPrice) {
@@ -324,11 +333,14 @@ export default function TradingContainer() {
     };
 
     const onScalpingSettings = (data) => {
+      // Ignore the backend echo if the user has typed within the last 500ms —
+      // otherwise fast typing gets clobbered by the round-trip update.
+      if (Date.now() - lastSettingsEditRef.current < 500) return;
       setScalpSettings({
-        takeProfitPct: (data.takeProfitPct || 0.005) * 100,
-        stopLossPct: (data.stopLossPct || 0.003) * 100,
-        qty: data.qty || 1,
-        cooldownMs: data.cooldownMs || 5000,
+        takeProfitPct: ((data.takeProfitPct ?? 0.005) * 100).toString(),
+        stopLossPct: ((data.stopLossPct ?? 0.003) * 100).toString(),
+        qty: (data.qty ?? 0.001).toString(),
+        cooldownMs: (data.cooldownMs ?? 3000).toString(),
       });
     };
 
@@ -344,12 +356,48 @@ export default function TradingContainer() {
     const onPositionClosed = (data) => {
       setScalpPositionState({ isOpen: false, pendingOrder: false });
       setActiveScalpLevels(null);
+
+      // Patch the matching trade row with exit info so the table reflects the close
+      setTradeLogs(prev => prev.map(log =>
+        log.orderId && log.orderId === data.orderId
+          ? {
+              ...log,
+              status: 'CLOSED',
+              exitPrice: data.exitPrice,
+              pnl: data.pnl,
+              pnlPct: data.pnlPct,
+              exitReason: data.result,
+            }
+          : log
+      ));
+
+      // Add a "close" entry to the activity feed
+      const now = Date.now();
+      setBotActivities(prev => [{
+        id: `close-${now}`,
+        type: 'close',
+        decision: data.side === 'BUY' ? 'SELL' : 'BUY',
+        strategy: 'scalping',
+        orderId: data.orderId,
+        entryPrice: data.entryPrice,
+        exitPrice: data.exitPrice,
+        pnl: data.pnl,
+        pnlPct: data.pnlPct,
+        exitReason: data.result,
+        timestamp: now,
+        rawTimestamp: now,
+      }, ...prev].slice(0, 30));
+
       const pnlText = typeof data.pnl === 'number'
         ? `${data.pnl >= 0 ? '+' : ''}$${data.pnl.toFixed(2)} (${data.pnlPct?.toFixed(2)}%)`
         : '';
       const isWin = (data.pnl ?? 0) >= 0;
+      const resultLabel = data.result === 'TP_HIT' ? '🎯 TP HIT'
+        : data.result === 'SL_HIT' ? '🛑 SL HIT'
+        : data.result === 'MAX_HOLD' ? '⏱ MAX HOLD'
+        : 'Position closed';
       toast[isWin ? 'success' : 'error'](
-        `${data.result === 'TP_HIT' ? '🎯 TP HIT' : data.result === 'SL_HIT' ? '🛑 SL HIT' : 'Position closed'} — ${pnlText}`,
+        `${resultLabel} — ${pnlText}`,
         { description: `${data.side} @ entry $${data.entryPrice?.toFixed(2)} → exit $${data.exitPrice?.toFixed(2)}` }
       );
     };
@@ -363,12 +411,15 @@ export default function TradingContainer() {
       console.log('[Socket] bot_state received:', state);
       if (state.isAutoTrading !== undefined) setIsAutoTrading(state.isAutoTrading);
       if (state.scalpSettings) {
-        setScalpSettings({
-          takeProfitPct: (state.scalpSettings.takeProfitPct || 0.005) * 100,
-          stopLossPct: (state.scalpSettings.stopLossPct || 0.003) * 100,
-          qty: state.scalpSettings.qty || 0.001,
-          cooldownMs: state.scalpSettings.cooldownMs || 3000,
-        });
+        // Don't clobber active typing
+        if (Date.now() - lastSettingsEditRef.current >= 500) {
+          setScalpSettings({
+            takeProfitPct: ((state.scalpSettings.takeProfitPct ?? 0.005) * 100).toString(),
+            stopLossPct: ((state.scalpSettings.stopLossPct ?? 0.003) * 100).toString(),
+            qty: (state.scalpSettings.qty ?? 0.001).toString(),
+            cooldownMs: (state.scalpSettings.cooldownMs ?? 3000).toString(),
+          });
+        }
       }
       if (state.position?.isOpen) {
         setScalpPositionState({ isOpen: true, pendingOrder: false });
@@ -403,6 +454,25 @@ export default function TradingContainer() {
           status: t.status,
         }));
         setTradeLogs(logs);
+
+        // Restore chart markers from history. Filter to current symbol so
+        // markers from previous symbols don't pollute the chart, and dedupe
+        // by orderId.
+        const seen = new Set();
+        const markers = state.recentTrades
+          .filter(t => t.symbol === state.symbol && t.createdAt)
+          .map(t => {
+            const id = t.orderId || String(t._id);
+            if (seen.has(id)) return null;
+            seen.add(id);
+            return {
+              id,
+              time: Math.floor(new Date(t.createdAt).getTime() / 1000),
+              decision: t.decision,
+            };
+          })
+          .filter(Boolean);
+        setTradeMarkers(markers);
       }
     };
 
@@ -507,22 +577,49 @@ export default function TradingContainer() {
     );
   };
 
+  // Tracks the last time the user edited a setting locally — used to ignore
+  // backend echoes (`scalping_settings_updated`) for a short window so they
+  // don't clobber what the user is currently typing.
+  const lastSettingsEditRef = useRef(0);
+
   const handleScalpSettingChange = (key, value) => {
-    const num = parseFloat(value);
-    if (isNaN(num)) return;
-    const updated = { ...scalpSettings, [key]: num };
+    // Always reflect the raw typed value in state so partial inputs like
+    // "0.", "" or "12." render correctly in the controlled input.
+    const updated = { ...scalpSettings, [key]: value };
     setScalpSettings(updated);
+    lastSettingsEditRef.current = Date.now();
+
+    // Only push to backend when every field is a valid positive number.
+    const tp = parseFloat(updated.takeProfitPct);
+    const sl = parseFloat(updated.stopLossPct);
+    const qty = parseFloat(updated.qty);
+    const cooldown = parseFloat(updated.cooldownMs);
+    if ([tp, sl, qty, cooldown].some(n => isNaN(n) || n <= 0)) return;
+
     updateScalpingSettings({
-      takeProfitPct: updated.takeProfitPct / 100,
-      stopLossPct: updated.stopLossPct / 100,
-      qty: updated.qty,
-      cooldownMs: updated.cooldownMs,
+      takeProfitPct: tp / 100,
+      stopLossPct: sl / 100,
+      qty,
+      cooldownMs: cooldown,
     });
   };
 
   const handleManualClose = () => {
     manualClosePosition();
     toast.info('Closing position...');
+  };
+
+  const handleManualTestBuy = () => {
+    if (scalpPositionState.isOpen) {
+      toast.error('A position is already open — close it first');
+      return;
+    }
+    if (!currentPrice) {
+      toast.error('No live price yet — wait for the first bar');
+      return;
+    }
+    manualTestBuy();
+    toast.info(`Test BUY @ $${currentPrice.toFixed(2)} — placing order...`);
   };
 
   const handlePeriodSelect = (period) => {
@@ -604,6 +701,7 @@ export default function TradingContainer() {
       handleToggleAutoTrade={handleToggleAutoTrade}
       handleScalpSettingChange={handleScalpSettingChange}
       handleManualClose={handleManualClose}
+      handleManualTestBuy={handleManualTestBuy}
       handlePeriodSelect={handlePeriodSelect}
       handleFilterChange={handleFilterChange}
       handleResetFilters={handleResetFilters}

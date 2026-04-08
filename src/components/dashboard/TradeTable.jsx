@@ -2,6 +2,31 @@ import React from 'react';
 import { format } from 'date-fns';
 import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 
+const formatPrice = (v) => (typeof v === 'number' ? `$${v.toFixed(2)}` : '--');
+const formatPnl = (v) => {
+  if (typeof v !== 'number') return '--';
+  const sign = v >= 0 ? '+' : '';
+  return `${sign}$${v.toFixed(2)}`;
+};
+const formatPnlPct = (v) => (typeof v === 'number' ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '');
+
+const STATUS_STYLES = {
+  OPEN: 'bg-blue-500/10 text-blue-400',
+  CLOSED: 'bg-gray-500/10 text-gray-300',
+  FILLED: 'bg-blue-500/10 text-blue-400',
+  NEW: 'bg-yellow-500/10 text-yellow-400',
+  REJECTED: 'bg-red-500/10 text-red-400',
+  CANCELLED: 'bg-gray-500/10 text-gray-400',
+};
+
+const EXIT_REASON_LABEL = {
+  TP_HIT: 'TP',
+  SL_HIT: 'SL',
+  MAX_HOLD: 'TIME',
+  MANUAL: 'MAN',
+  REVERSE_SIGNAL: 'REV',
+};
+
 export default function TradeTable({ logs }) {
   if (logs.length === 0) {
     return (
@@ -24,17 +49,24 @@ export default function TradeTable({ logs }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-[10px] uppercase tracking-wider text-gray-600 border-b border-terminal-border">
-              <th className="text-left px-4 py-2.5 font-semibold">Time</th>
-              <th className="text-left px-4 py-2.5 font-semibold">Symbol</th>
-              <th className="text-left px-4 py-2.5 font-semibold">Side</th>
-              <th className="text-right px-4 py-2.5 font-semibold">RSI</th>
-              <th className="text-right px-4 py-2.5 font-semibold">Strength</th>
-              <th className="text-right px-4 py-2.5 font-semibold">Order ID</th>
+              <th className="text-left px-3 py-2.5 font-semibold">Time</th>
+              <th className="text-left px-3 py-2.5 font-semibold">Symbol</th>
+              <th className="text-left px-3 py-2.5 font-semibold">Side</th>
+              <th className="text-right px-3 py-2.5 font-semibold">Entry</th>
+              <th className="text-right px-3 py-2.5 font-semibold">Exit</th>
+              <th className="text-right px-3 py-2.5 font-semibold">P&amp;L</th>
+              <th className="text-center px-3 py-2.5 font-semibold">Status</th>
+              <th className="text-right px-3 py-2.5 font-semibold">Order ID</th>
             </tr>
           </thead>
           <tbody>
             {logs.map((log, idx) => {
               const isBuy = log.decision === 'BUY';
+              const status = log.status || 'OPEN';
+              const isClosed = status === 'CLOSED';
+              const pnlPositive = (log.pnl ?? 0) >= 0;
+              const exitTag = log.exitReason ? EXIT_REASON_LABEL[log.exitReason] : null;
+
               return (
                 <tr
                   key={log.id}
@@ -42,17 +74,15 @@ export default function TradeTable({ logs }) {
                     idx === 0 ? 'bg-terminal-card/50' : ''
                   }`}
                 >
-                  <td className="px-4 py-3 font-mono text-xs text-gray-400">
+                  <td className="px-3 py-3 font-mono text-xs text-gray-400">
                     {format(new Date(log.timestamp), 'HH:mm:ss')}
                   </td>
-                  <td className="px-4 py-3 font-medium text-white text-xs">
+                  <td className="px-3 py-3 font-medium text-white text-xs">
                     {log.symbol || '--'}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold ${
-                      isBuy
-                        ? 'bg-bull/10 text-bull'
-                        : 'bg-bear/10 text-bear'
+                      isBuy ? 'bg-bull/10 text-bull' : 'bg-bear/10 text-bear'
                     }`}>
                       {isBuy
                         ? <ArrowUpRight className="w-3 h-3" />
@@ -61,26 +91,37 @@ export default function TradeTable({ logs }) {
                       {log.decision}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">
-                    <span className={
-                      parseFloat(log.rsi) < 30 ? 'text-bull' : parseFloat(log.rsi) > 70 ? 'text-bear' : 'text-gray-400'
-                    }>
-                      {log.rsi}
-                    </span>
+                  <td className="px-3 py-3 text-right font-mono text-xs text-gray-300">
+                    {formatPrice(log.entryPrice)}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-0.5">
-                      {[0, 1, 2].map(i => (
-                        <div
-                          key={i}
-                          className={`w-2 h-2 rounded-sm ${
-                            i < (log.strength || 0) ? 'bg-gold' : 'bg-terminal-border'
-                          }`}
-                        />
-                      ))}
+                  <td className="px-3 py-3 text-right font-mono text-xs text-gray-300">
+                    {isClosed ? formatPrice(log.exitPrice) : <span className="text-gray-600">--</span>}
+                  </td>
+                  <td className="px-3 py-3 text-right font-mono text-xs">
+                    {isClosed ? (
+                      <div className="flex flex-col items-end">
+                        <span className={pnlPositive ? 'text-bull font-semibold' : 'text-bear font-semibold'}>
+                          {formatPnl(log.pnl)}
+                        </span>
+                        <span className={`text-[10px] ${pnlPositive ? 'text-bull/70' : 'text-bear/70'}`}>
+                          {formatPnlPct(log.pnlPct)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-gray-600">--</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${STATUS_STYLES[status] || 'bg-gray-500/10 text-gray-400'}`}>
+                        {status}
+                      </span>
+                      {exitTag && (
+                        <span className="text-[9px] text-gray-500 font-mono">{exitTag}</span>
+                      )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 py-3 text-right">
                     <span className="font-mono text-[10px] text-gray-600 bg-terminal-bg px-1.5 py-0.5 rounded">
                       {log.orderId ? log.orderId.substring(0, 10) : 'N/A'}
                     </span>

@@ -131,6 +131,9 @@ export default function Chart({ data, liveBar, trades = [], scalpLevels = null }
   }, [data]);
 
   // Trade markers
+  // NOTE: depends on `data` too — the chart is fully recreated whenever
+  // historical data arrives, which destroys any markers. Re-running this
+  // effect after data change ensures markers are reattached.
   useEffect(() => {
     if (!candleRef.current) return;
     if (markersRef.current) { markersRef.current.detach(); markersRef.current = null; }
@@ -151,9 +154,15 @@ export default function Chart({ data, liveBar, trades = [], scalpLevels = null }
     if (markers.length > 0) {
       markersRef.current = createSeriesMarkers(candleRef.current, markers);
     }
-  }, [trades]);
+  }, [trades, data]);
 
   // SL/TP price lines for active scalp position
+  // NOTE: depends on `data` too — see comment on the trade-markers effect.
+  // Without `data` in the dep array, refreshing the page while a position is
+  // open will set scalpLevels BEFORE the chart finishes building, so the
+  // first run bails out at `if (!candleRef.current)` and never re-fires.
+  // The lines reappear only after the user navigates away and back (which
+  // remounts the Chart and re-runs every effect in the right order).
   useEffect(() => {
     if (!candleRef.current) return;
 
@@ -203,7 +212,7 @@ export default function Chart({ data, liveBar, trades = [], scalpLevels = null }
         title: `SL $${sl.toFixed(2)}`,
       }));
     }
-  }, [scalpLevels]);
+  }, [scalpLevels, data]);
 
   // Live updates
   useEffect(() => {

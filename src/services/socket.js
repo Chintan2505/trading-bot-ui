@@ -79,3 +79,7 @@ export const getStrategy = () => {
 export const manualClosePosition = () => {
   socket.emit('manual_close_position');
 };
+
+export const manualTestBuy = () => {
+  socket.emit('manual_test_buy');
+};
