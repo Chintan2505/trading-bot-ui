@@ -30,13 +30,11 @@ const EXIT_REASON_LABEL = {
 
 const EXECUTED_BY_STYLES = {
   ai: 'bg-blue-500/10 text-blue-400',
-  algo: 'bg-gold/10 text-gold',
   manual: 'bg-gray-500/10 text-gray-400',
 };
 
 const EXECUTED_BY_LABEL = {
   ai: '🤖 AI',
-  algo: '📊 ALGO',
   manual: '🧪 TEST',
 };
 
@@ -62,7 +60,7 @@ export default function TradeTable({ logs }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-[10px] uppercase tracking-wider text-gray-600 border-b border-terminal-border">
-              <th className="text-left px-3 py-2.5 font-semibold">Time</th>
+              <th className="text-left px-3 py-2.5 font-semibold">Date & Time</th>
               <th className="text-left px-3 py-2.5 font-semibold">Symbol</th>
               <th className="text-left px-3 py-2.5 font-semibold">Side</th>
               <th className="text-center px-3 py-2.5 font-semibold">Source</th>
@@ -89,7 +87,8 @@ export default function TradeTable({ logs }) {
                   }`}
                 >
                   <td className="px-3 py-3 font-mono text-xs text-gray-400">
-                    {format(new Date(log.timestamp), 'HH:mm:ss')}
+                    <div>{format(new Date(log.timestamp), 'dd MMM yyyy')}</div>
+                    <div className="text-[10px] text-gray-600">{format(new Date(log.timestamp), 'HH:mm:ss')}</div>
                   </td>
                   <td className="px-3 py-3 font-medium text-white text-xs">
                     {log.symbol || '--'}
@@ -107,7 +106,7 @@ export default function TradeTable({ logs }) {
                   </td>
                   <td className="px-3 py-3 text-center">
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${EXECUTED_BY_STYLES[log.executedBy] || 'bg-gray-500/10 text-gray-400'}`}>
-                      {EXECUTED_BY_LABEL[log.executedBy] || log.executedBy || 'ALGO'}
+                      {EXECUTED_BY_LABEL[log.executedBy] || log.executedBy || 'TEST'}
                     </span>
                   </td>
                   <td className="px-3 py-3 text-right font-mono text-xs text-gray-300">

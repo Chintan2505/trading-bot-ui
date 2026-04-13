@@ -7,10 +7,8 @@ import {
   Activity, Wifi, WifiOff, Zap, ZapOff,
   BarChart3, ArrowUpRight, ArrowDownRight, Search,
   SlidersHorizontal, X, RotateCcw, PanelRightOpen, PanelRightClose,
-  Clock, TrendingUp, TrendingDown, Trophy,
+  Clock, TrendingUp, TrendingDown, Trophy, Ruler,
 } from 'lucide-react';
-import { createPortal } from 'react-dom';
-
 // Quantity + Dollar Amount inputs — each tracks its own string state so the
 // cursor never jumps while the user is typing. They sync to each other on
 // blur (when the user clicks away) instead of on every keystroke.
@@ -256,7 +254,6 @@ export default function TradingView({
   isAutoTrading,
   tradeLogs,
   botActivities,
-  strategyData,
   // Derived
   currentPrice,
   priceChange,
@@ -289,8 +286,6 @@ export default function TradingView({
   handleManualClose,
   handleManualTestBuy,
   geminiStatus,
-  tradingMode,
-  handleTradingModeChange,
   handlePeriodSelect,
   handleFilterChange,
   handleResetFilters,
@@ -302,6 +297,8 @@ export default function TradingView({
   // Components
   Chart,
 }) {
+  const [measureMode, setMeasureMode] = useState(false);
+
   return (
     <div className="flex-1 flex flex-col relative overflow-hidden">
       {/* Trade Flash Overlay */}
@@ -432,83 +429,35 @@ export default function TradingView({
       <div className="flex-1 flex overflow-hidden">
 
         {/* ── Left Sidebar: Strategy Signals ── */}
-        {leftSidebarOpen && strategyData && (
+        {leftSidebarOpen && (
           <aside className="w-44 flex-shrink-0 border-r border-terminal-border bg-terminal-card/30 overflow-hidden hidden lg:block">
             <div className="p-2.5">
-              <h3 className="text-[9px] uppercase tracking-widest text-gray-600 font-semibold mb-2 px-0.5">
-                {tradingMode === 'ai' ? '🤖 AI Criteria' : '📊 Scalping Signals'}
-              </h3>
-
-              {/* ALGO mode — show indicators */}
-              {tradingMode === 'algo' && (
-                <div className="space-y-1">
-                  <SignalRow label="EMA5" value={strategyData.emaFast?.toFixed(2)} color={
-                    strategyData.crossover === 'BULLISH_CROSS' ? 'text-bull' : strategyData.crossover === 'BEARISH_CROSS' ? 'text-bear' : 'text-gray-300'
-                  } />
-                  <SignalRow label="EMA13" value={strategyData.emaSlow?.toFixed(2)} color={
-                    strategyData.crossover === 'BULLISH_CROSS' ? 'text-bull' : strategyData.crossover === 'BEARISH_CROSS' ? 'text-bear' : 'text-gray-300'
-                  } />
-                  <SignalRow label="VWAP" value={strategyData.vwap ? `${strategyData.vwap.toFixed(2)} (${strategyData.vwapFilter})` : '--'} color={
-                    strategyData.vwapFilter === 'ABOVE' ? 'text-bull' : strategyData.vwapFilter === 'BELOW' ? 'text-bear' : 'text-gray-400'
-                  } />
-                  <SignalRow label="Signal" value={strategyData.crossover || 'NONE'} color={
-                    strategyData.crossover === 'BULLISH_CROSS' ? 'text-bull' : strategyData.crossover === 'BEARISH_CROSS' ? 'text-bear' : 'text-gray-500'
-                  } />
-                  <SignalRow label="Strength" value={`${strategyData.strength || 0}/4`} color={
-                    strategyData.strength >= 2 ? 'text-gold' : 'text-gray-400'
-                  } />
-                  <div className="mt-1.5 flex gap-0.5">
-                    {[0, 1, 2, 3].map(i => (
-                      <div
-                        key={i}
-                        className={`flex-1 h-1.5 rounded-full transition-all duration-300 ${
-                          i < (strategyData?.strength || 0) ? 'bg-gold shadow-sm shadow-gold/30' : 'bg-terminal-border'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* AI mode — show Gemini's 7 criteria */}
-              {tradingMode === 'ai' && (
-                <div className="space-y-1">
-                  {(() => {
-                    const c = geminiStatus?.criteria;
-                    if (!c) return <div className="text-[9px] text-gray-600">Waiting for AI analysis...</div>;
-                    const criteria = [
-                      { label: 'Trend', value: c.trend, good: 'BULLISH' },
-                      { label: 'Momentum', value: c.momentum, good: 'STRONG' },
-                      { label: 'Volume', value: c.volume, good: 'CONFIRMING' },
-                      { label: 'S/R Level', value: c.support_resistance, good: 'NEAR_SUPPORT' },
-                      { label: 'Pattern', value: c.candle_pattern, good: null },
-                      { label: 'Risk/Reward', value: c.risk_reward, good: 'FAVORABLE' },
-                      { label: 'Market', value: c.market_condition, good: 'GOOD' },
-                    ];
-                    return criteria.map(({ label, value, good }) => {
-                      const isGood = good ? value === good : (value && value !== 'NONE');
-                      return (
-                        <div key={label} className="flex items-center justify-between text-[9px] py-0.5">
-                          <span className="text-gray-500">{label}</span>
-                          <span className={`font-mono font-bold ${isGood ? 'text-bull' : 'text-bear'}`}>
-                            {isGood ? '✅' : '❌'} {value || '--'}
-                          </span>
-                        </div>
-                      );
-                    });
-                  })()}
-                  {geminiStatus?.confidence > 0 && (
-                    <div className="mt-1.5 pt-1.5 border-t border-terminal-border flex items-center justify-between">
-                      <span className={`text-[10px] font-bold ${geminiStatus.confidence >= 80 ? 'text-bull' : 'text-gray-400'}`}>
-                        {geminiStatus.action === 'BUY' && geminiStatus.confidence >= 80 ? '🟢 BUY' : '⏸ WAIT'}
+              <h3 className="text-[9px] uppercase tracking-widest text-gray-600 font-semibold mb-2 px-0.5">🤖 AI Decision</h3>
+              <div className="space-y-1.5">
+                {!geminiStatus?.analyzedAt ? (
+                  <div className="text-[9px] text-gray-600">Waiting for AI analysis...</div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[11px] font-bold ${
+                        geminiStatus.action === 'BUY' && geminiStatus.shouldTrade ? 'text-bull' :
+                        geminiStatus.action === 'SELL' && geminiStatus.shouldTrade ? 'text-bear' : 'text-gray-400'
+                      }`}>
+                        {geminiStatus.action === 'BUY' && geminiStatus.shouldTrade ? '🟢 BUY' :
+                         geminiStatus.action === 'SELL' && geminiStatus.shouldTrade ? '🔴 SELL' : '⏸ HOLD'}
                       </span>
-                      <span className={`text-[10px] font-bold font-mono ${
-                        geminiStatus.confidence >= 80 ? 'text-bull' : geminiStatus.confidence >= 50 ? 'text-yellow-400' : 'text-gray-500'
+                      <span className={`text-[11px] font-bold font-mono ${
+                        geminiStatus.confidence >= 70 ? 'text-bull' : geminiStatus.confidence >= 50 ? 'text-yellow-400' : 'text-gray-500'
                       }`}>{geminiStatus.confidence}%</span>
                     </div>
-                  )}
-                </div>
-              )}
+                    <p className="text-[8px] text-gray-400 leading-tight">{geminiStatus.reason}</p>
+                    <div className="pt-1 border-t border-terminal-border text-[8px] text-gray-600 space-y-0.5">
+                      <div className="flex justify-between"><span>Calls</span><span>{geminiStatus.totalCalls || 0}</span></div>
+                      <div className="flex justify-between"><span>Blocked</span><span>{geminiStatus.totalBlocked || 0}</span></div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Quick Symbols */}
@@ -576,6 +525,17 @@ export default function TradingView({
             </button>
 
             <div className="h-3.5 w-px bg-terminal-border mx-1" />
+
+            <button
+              onClick={() => { setMeasureMode(!measureMode); }}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                measureMode ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' : 'text-gray-500 hover:text-gray-300 hover:bg-terminal-hover'
+              }`}
+              title="Measure tool — click & drag on chart (Esc to cancel)"
+            >
+              <Ruler className="w-3 h-3" />
+              Measure
+            </button>
 
             <button
               onClick={() => setFiltersOpen(!filtersOpen)}
@@ -662,7 +622,7 @@ export default function TradingView({
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="relative flex-1 min-h-0">
                 <div className="absolute inset-0">
-                  <Chart data={historicalData} liveBar={liveBar} scalpLevels={activeScalpLevels} />
+                  <Chart data={historicalData} liveBar={liveBar} scalpLevels={activeScalpLevels} measureMode={measureMode} onMeasureEnd={() => setMeasureMode(false)} />
                 </div>
               </div>
               <div className="h-[3px] bg-terminal-border hover:bg-gold/30 cursor-row-resize flex-shrink-0 flex items-center justify-center group">
@@ -740,86 +700,12 @@ export default function TradingView({
                 🧪 TEST BUY {currentPrice ? `@ $${currentPrice.toFixed(2)}` : ''}
               </button>
 
-              {/* Mode Toggle: AI vs ALGO */}
-              <div className="mt-2.5 flex rounded-lg overflow-hidden border border-terminal-border">
-                <button
-                  onClick={() => handleTradingModeChange('algo')}
-                  className={`flex-1 py-1.5 text-[10px] font-bold transition-all ${
-                    tradingMode === 'algo'
-                      ? 'bg-gold/20 text-gold border-r border-terminal-border'
-                      : 'bg-terminal-bg text-gray-500 border-r border-terminal-border hover:text-gray-300'
-                  }`}
-                >
-                  📊 ALGO
-                </button>
-                <button
-                  onClick={() => handleTradingModeChange('ai')}
-                  className={`flex-1 py-1.5 text-[10px] font-bold transition-all ${
-                    tradingMode === 'ai'
-                      ? 'bg-blue-500/20 text-blue-400'
-                      : 'bg-terminal-bg text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  🤖 AI
-                </button>
-              </div>
-
               <div className={`mt-1.5 flex items-center justify-center gap-1.5 text-[10px] ${
                 isAutoTrading ? 'text-bull' : 'text-gray-600'
               }`}>
                 <Activity className="w-3 h-3" />
-                {!isAutoTrading
-                  ? 'Enable to start scalping'
-                  : tradingMode === 'ai'
-                    ? 'Gemini AI making decisions'
-                    : 'Indicators: EMA + RSI + VWAP'
-                }
+                {isAutoTrading ? '🤖 Gemini AI making decisions' : 'Enable to start scalping'}
               </div>
-
-              {/* Strategy Indicators — only show in ALGO mode */}
-              {tradingMode === 'algo' && (
-              <div className="flex gap-1.5 mt-2.5">
-                <StrategyPill label="EMA5" active={strategyData?.crossover === 'BULLISH_CROSS' || strategyData?.crossover === 'BEARISH_CROSS'} />
-                <StrategyPill label="EMA13" active={strategyData?.crossover === 'BULLISH_CROSS' || strategyData?.crossover === 'BEARISH_CROSS'} />
-                <StrategyPill label="VWAP" active={strategyData?.vwapFilter === 'ABOVE' || strategyData?.vwapFilter === 'BELOW'} />
-                <div className="flex-1 flex items-center justify-end gap-0.5">
-                  <div className={`w-3 h-1.5 rounded-sm transition-colors ${
-                    (strategyData?.strength || 0) > 0 ? 'bg-gold' : 'bg-terminal-border'
-                  }`} />
-                </div>
-              </div>
-
-              )}
-
-              {/* ADX Market Condition — display only, shows in both modes */}
-              {strategyData?.adx != null && (
-                <div className={`mt-2 p-2 rounded-lg border text-[10px] flex items-center justify-between ${
-                  strategyData.marketCondition === 'SIDEWAYS' ? 'bg-yellow-500/5 border-yellow-500/20' :
-                  strategyData.marketCondition === 'WEAK_TREND' ? 'bg-orange-500/5 border-orange-500/20' :
-                  strategyData.marketCondition === 'STRONG_TREND' ? 'bg-bull/5 border-bull/20' :
-                  'bg-blue-500/5 border-blue-500/20'
-                }`}>
-                  <div className="flex items-center gap-1.5">
-                    <span>{
-                      strategyData.marketCondition === 'SIDEWAYS' ? '⚠️' :
-                      strategyData.marketCondition === 'WEAK_TREND' ? '〰️' :
-                      strategyData.marketCondition === 'STRONG_TREND' ? '🔥' : '📈'
-                    }</span>
-                    <span className={`font-semibold ${
-                      strategyData.marketCondition === 'SIDEWAYS' ? 'text-yellow-400' :
-                      strategyData.marketCondition === 'WEAK_TREND' ? 'text-orange-400' :
-                      strategyData.marketCondition === 'STRONG_TREND' ? 'text-bull' :
-                      'text-blue-400'
-                    }`}>
-                      {strategyData.marketCondition === 'SIDEWAYS' ? 'Sideways Market' :
-                       strategyData.marketCondition === 'WEAK_TREND' ? 'Weak Trend' :
-                       strategyData.marketCondition === 'STRONG_TREND' ? 'Strong Trend' :
-                       'Trending'}
-                    </span>
-                  </div>
-                  <span className="font-mono text-gray-400">ADX: {strategyData.adx?.toFixed(1)}</span>
-                </div>
-              )}
 
               {/* Scalp Position Status with Manual Close button */}
               {scalpPositionState.isOpen && activeScalpLevels && (
@@ -936,7 +822,6 @@ export default function TradingView({
             </div>
 
             {/* Gemini AI Status — only in AI mode */}
-            {tradingMode === 'ai' && (
             <div className="p-3 border-b border-terminal-border flex-shrink-0">
               <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-2">🤖 Gemini AI</span>
               <div className="p-2.5 rounded-lg bg-terminal-bg border border-terminal-border space-y-2">
@@ -967,7 +852,6 @@ export default function TradingView({
                 </div>
               </div>
             </div>
-            )}
 
             {/* Activity Feed — natural height, scrolls with whole panel */}
             <div className="flex flex-col flex-shrink-0">
@@ -997,143 +881,7 @@ export default function TradingView({
   );
 }
 
-// ─── Sub-components ──────────────────────────────────────────
 
-function SignalRow({ label, value, color }) {
-  return (
-    <div className="flex items-center justify-between px-1">
-      <span className="text-[11px] text-gray-500">{label}</span>
-      <span className={`text-[11px] font-mono font-medium ${color}`}>{value ?? '--'}</span>
-    </div>
-  );
-}
-
-const STRATEGY_INFO = {
-  EMA5: {
-    fullName: 'Fast EMA (5-period)',
-    description: 'Short-term trend for scalping entry signals.',
-    how: 'Calculated on the last 5 closing prices. When it crosses above EMA13, generates a BUY signal.',
-    signals: ['EMA5 > EMA13 → Bullish cross → Buy', 'EMA5 < EMA13 → Bearish cross → Sell'],
-  },
-  EMA13: {
-    fullName: 'Slow EMA (13-period)',
-    description: 'Medium-term trend baseline for scalping.',
-    how: 'Calculated on the last 13 closing prices. Acts as the reference line for crossover detection.',
-    signals: ['Crossover with EMA5 triggers trade signals'],
-  },
-  VWAP: {
-    fullName: 'Volume Weighted Average Price',
-    description: 'Filters scalping signals by comparing price to the volume-weighted average.',
-    how: 'Only allows BUY if price is above VWAP (bullish) and SELL if price is below VWAP (bearish). Reduces false signals.',
-    signals: ['Price > VWAP → Allow BUY signals', 'Price < VWAP → Allow SELL signals'],
-  },
-};
-
-function StrategyPill({ label, active }) {
-  const [show, setShow] = useState(false);
-  const [coords, setCoords] = useState({ x: 0, y: 0, placeAbove: true, arrowX: 0 });
-  const ref = useRef(null);
-  const info = STRATEGY_INFO[label];
-
-  const handleMouseEnter = () => {
-    if (ref.current) {
-      const rect = ref.current.getBoundingClientRect();
-      const tooltipWidth = 260;
-      const padding = 8;
-      let x = rect.left + rect.width / 2;
-      const minX = tooltipWidth / 2 + padding;
-      const maxX = window.innerWidth - tooltipWidth / 2 - padding;
-      x = Math.max(minX, Math.min(maxX, x));
-      const placeAbove = rect.top > 200;
-      setCoords({
-        x,
-        y: placeAbove ? rect.top - 8 : rect.bottom + 8,
-        placeAbove,
-        arrowX: rect.left + rect.width / 2,
-      });
-    }
-    setShow(true);
-  };
-
-  const tooltip = show && info && createPortal(
-    <div
-      className="fixed z-[99999] w-[260px] pointer-events-none"
-      style={{
-        left: `${coords.x}px`,
-        top: coords.placeAbove ? 'auto' : `${coords.y}px`,
-        bottom: coords.placeAbove ? `${window.innerHeight - coords.y}px` : 'auto',
-        transform: 'translateX(-50%)',
-      }}
-    >
-      <div className="bg-[#0d1117] border border-emerald-500/30 rounded-lg shadow-2xl shadow-emerald-500/10 p-3 text-left pointer-events-auto">
-        {/* Arrow */}
-        <div
-          className={`absolute w-2.5 h-2.5 bg-[#0d1117] border-emerald-500/30 rotate-45 ${
-            coords.placeAbove ? 'bottom-[-6px] border-b border-r' : 'top-[-6px] border-t border-l'
-          }`}
-          style={{ left: `${coords.arrowX - coords.x + 130}px`, transform: 'translateX(-50%) rotate(45deg)' }}
-        />
-
-        {/* Header */}
-        <div className="flex items-center gap-1.5 mb-2">
-          <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded ${
-            active ? 'text-bull bg-bull/10' : 'text-gray-400 bg-gray-800/50'
-          }`}>
-            {label}
-          </span>
-          <span className="text-[12px] font-medium text-gray-300">{info.fullName}</span>
-        </div>
-
-        {/* Description */}
-        <p className="text-[12px] text-gray-400 mb-2 leading-relaxed">{info.description}</p>
-
-        {/* Signals */}
-        <div className="space-y-1 mb-2">
-          {info.signals.map((signal, i) => (
-            <div key={i} className="flex items-start gap-1.5 text-[11px]">
-              <span className="mt-1 w-1 h-1 rounded-full bg-emerald-400/60 shrink-0" />
-              <span className="text-gray-400">{signal}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* How bot calculates */}
-        <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-md p-2 mt-2">
-          <div className="flex items-center gap-1 mb-1">
-            <Zap className="w-3.5 h-3.5 text-emerald-400/70" />
-            <span className="text-[11px] font-medium text-emerald-400/80">How Bot Calculates</span>
-          </div>
-          <p className="text-[11px] text-gray-500 leading-relaxed">{info.how}</p>
-        </div>
-
-        {/* Status */}
-        <div className="mt-2 flex items-center gap-1.5">
-          <div className={`w-2 h-2 rounded-full ${active ? 'bg-bull animate-pulse' : 'bg-gray-600'}`} />
-          <span className={`text-[11px] font-medium ${active ? 'text-bull' : 'text-gray-600'}`}>
-            {active ? 'Active — Signal detected' : 'Inactive — No signal'}
-          </span>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-
-  return (
-    <span
-      ref={ref}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => setShow(false)}
-      className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-help ${
-        active
-          ? 'bg-bull/15 text-bull border border-bull/20'
-          : 'bg-gray-800/50 text-gray-600 border border-gray-800 hover:text-emerald-400 hover:border-emerald-500/30'
-      }`}
-    >
-      {label}
-      {tooltip}
-    </span>
-  );
-}
 
 function FilterInput({ label, type, value, onChange }) {
   return (

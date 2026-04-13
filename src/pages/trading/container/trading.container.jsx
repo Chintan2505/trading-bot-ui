@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Chart from '@/components/Chart';
 import { getHistoricalCandles, getTradeStats } from '@/services/api';
-import { socket, subscribeToSymbol, toggleAutoTrade, changeStrategy, updateScalpingSettings, getScalpingSettings, manualClosePosition, manualTestBuy, changeTradingMode } from '@/services/socket';
+import { socket, subscribeToSymbol, toggleAutoTrade, changeStrategy, updateScalpingSettings, getScalpingSettings, manualClosePosition, manualTestBuy } from '@/services/socket';
 import { toast } from 'sonner';
 import TradingView from '../view/trading.view';
 
@@ -91,7 +91,6 @@ export default function TradingContainer() {
   const [isAutoTrading, setIsAutoTrading] = useState(false);
   const [tradeLogs, setTradeLogs] = useState([]);
   const [botActivities, setBotActivities] = useState([]);
-  const [strategyData, setStrategyData] = useState(null);
 
   // ── UI state ──
   const [activeTab, setActiveTab] = useState('chart');
@@ -114,7 +113,6 @@ export default function TradingContainer() {
     cooldownMs: '3000',
     trailingStopEnabled: true,
   });
-  const [tradingMode, setTradingMode] = useState('algo'); // 'ai' or 'algo'
   const [scalpPositionState, setScalpPositionState] = useState({ isOpen: false, pendingOrder: false });
   const [geminiStatus, setGeminiStatus] = useState({
     action: 'WAIT', confidence: 0, reason: 'Waiting for first signal...', analyzedAt: null,
@@ -232,58 +230,15 @@ export default function TradingContainer() {
       }
     };
 
-    const onStrategyUpdate = (data) => {
-      setStrategyData(data);
-      if (data.positionState) {
-        setScalpPositionState(data.positionState);
-      }
-
-      if (data.strategyType === 'scalping') {
-        if (data.crossover === 'NONE') {
-          setBotActivities(prev => {
-            const lastAnalysis = prev.find(a => a.type === 'analysis');
-            if (lastAnalysis && (Date.now() - lastAnalysis.rawTimestamp) < 25000) return prev;
-            return [{
-              id: `analysis-${Date.now()}`, type: 'analysis', decision: 'HOLD',
-              rsi: null, emaTrend: `EMA5: ${data.emaFast?.toFixed(2)} | EMA13: ${data.emaSlow?.toFixed(2)}`,
-              timestamp: Date.now(), rawTimestamp: Date.now(),
-            }, ...prev].slice(0, 30);
-          });
-        } else {
-          setBotActivities(prev => [{
-            id: `signal-${Date.now()}`, type: 'signal',
-            decision: data.crossover === 'BULLISH_CROSS' ? 'BUY' : 'SELL',
-            rsi: null, emaTrend: data.crossover, strength: data.strength,
-            timestamp: Date.now(), rawTimestamp: Date.now(),
-          }, ...prev].slice(0, 30));
-        }
-      } else {
-        if (data.rsiCrossover === 'NONE') {
-          setBotActivities(prev => {
-            const lastAnalysis = prev.find(a => a.type === 'analysis');
-            if (lastAnalysis && (Date.now() - lastAnalysis.rawTimestamp) < 25000) return prev;
-            return [{
-              id: `analysis-${Date.now()}`, type: 'analysis', decision: 'HOLD',
-              rsi: data.rsi?.toFixed(2), emaTrend: data.emaTrend,
-              timestamp: Date.now(), rawTimestamp: Date.now(),
-            }, ...prev].slice(0, 30);
-          });
-        } else {
-          setBotActivities(prev => [{
-            id: `signal-${Date.now()}`, type: 'signal', decision: data.rsiCrossover,
-            rsi: data.rsi?.toFixed(2), emaTrend: data.emaTrend, strength: data.strength,
-            timestamp: Date.now(), rawTimestamp: Date.now(),
-          }, ...prev].slice(0, 30));
-        }
-      }
-    };
+    // Strategy update is no longer used for indicators — only position state sync
+    const onStrategyUpdate = () => {};
 
     const onTradeExecuted = (trade) => {
       const now = Date.now();
 
       setTradeLogs(prev => [{
         id: now.toString(), timestamp: trade.timestamp || now, symbol: trade.symbol,
-        rsi: trade.rsi?.toFixed(2), decision: trade.decision, strength: trade.strength,
+        decision: trade.decision,
         orderId: trade.orderId, strategy: trade.strategy, executedBy: trade.executedBy,
         entryPrice: trade.entryPrice, takeProfitPrice: trade.takeProfitPrice,
         stopLossPrice: trade.stopLossPrice, qty: trade.qty,
@@ -316,10 +271,7 @@ export default function TradingContainer() {
       setTimeout(() => setTradeFlash(null), 1500);
 
       const isBuy = trade.decision === 'BUY';
-      const isScalping = trade.strategy === 'scalping';
-      const desc = isScalping
-        ? `${trade.symbol} | Entry: $${trade.entryPrice?.toFixed(2)} | TP: $${trade.takeProfitPrice?.toFixed(2)} | SL: $${trade.stopLossPrice?.toFixed(2)}`
-        : `${trade.symbol} | RSI: ${trade.rsi?.toFixed(2)} | Strength: ${trade.strength}/3`;
+      const desc = `${trade.symbol} | Entry: $${trade.entryPrice?.toFixed(2)} | TP: $${trade.takeProfitPrice?.toFixed(2)} | SL: $${trade.stopLossPrice?.toFixed(2)}`;
       toast[isBuy ? 'success' : 'error'](
         `${trade.decision} Scalp Executed`,
         { description: desc }
@@ -432,7 +384,6 @@ export default function TradingContainer() {
       }
       if (state.stats) setTradeStats(state.stats);
       if (state.gemini) setGeminiStatus(state.gemini);
-      if (state.tradingMode) setTradingMode(state.tradingMode);
       if (Array.isArray(state.recentTrades)) {
         const logs = state.recentTrades.map(t => ({
           id: String(t._id),
@@ -440,8 +391,6 @@ export default function TradingContainer() {
           symbol: t.symbol,
           decision: t.decision,
           strategy: t.strategy,
-          strength: t.signalStrength,
-          rsi: t.rsi?.toFixed?.(2),
           orderId: t.orderId,
           entryPrice: t.entryPrice,
           takeProfitPrice: t.takeProfitPrice,
@@ -476,10 +425,6 @@ export default function TradingContainer() {
       toast.error(`Trade failed: ${data.symbol} ${data.decision}`, {
         description: data.error,
       });
-    };
-
-    const onTradingModeChanged = (data) => {
-      if (data.mode) setTradingMode(data.mode);
     };
 
     const onGeminiUpdate = (data) => {
@@ -519,7 +464,6 @@ export default function TradingContainer() {
     socket.on('trade_error', onTradeError);
     socket.on('position_updated', onPositionUpdated);
     socket.on('gemini_update', onGeminiUpdate);
-    socket.on('trading_mode_changed', onTradingModeChanged);
 
     changeStrategy('scalping');
     getScalpingSettings();
@@ -549,7 +493,6 @@ export default function TradingContainer() {
       socket.off('trade_error', onTradeError);
       socket.off('position_updated', onPositionUpdated);
       socket.off('gemini_update', onGeminiUpdate);
-      socket.off('trading_mode_changed', onTradingModeChanged);
     };
   }, []);
 
@@ -618,11 +561,6 @@ export default function TradingContainer() {
     });
   };
 
-  const handleTradingModeChange = (mode) => {
-    changeTradingMode(mode);
-    setTradingMode(mode);
-  };
-
   const handleManualClose = () => {
     manualClosePosition();
     toast.info('Closing position...');
@@ -688,7 +626,6 @@ export default function TradingContainer() {
       isAutoTrading={isAutoTrading}
       tradeLogs={tradeLogs}
       botActivities={botActivities}
-      strategyData={strategyData}
       // Derived
       currentPrice={currentPrice}
       priceChange={priceChange}
@@ -721,8 +658,6 @@ export default function TradingContainer() {
       handleManualClose={handleManualClose}
       handleManualTestBuy={handleManualTestBuy}
       geminiStatus={geminiStatus}
-      tradingMode={tradingMode}
-      handleTradingModeChange={handleTradingModeChange}
       handlePeriodSelect={handlePeriodSelect}
       handleFilterChange={handleFilterChange}
       handleResetFilters={handleResetFilters}

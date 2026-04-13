@@ -20,8 +20,7 @@ socket.on('bar_update', (bar) => {
   console.log(`[Socket] bar_update — close: $${bar.close?.toFixed(2)}, vol: ${bar.volume}`);
 });
 
-socket.on('strategy_update', (data) => {
-  console.log(`[Socket] strategy_update — type: ${data.strategyType}, strength: ${data.strength}, crossover: ${data.crossover || data.rsiCrossover || 'NONE'}`);
+socket.on('strategy_update', () => {
 });
 
 socket.on('trade_executed', (trade) => {
@@ -84,6 +83,3 @@ export const manualTestBuy = () => {
   socket.emit('manual_test_buy');
 };
 
-export const changeTradingMode = (mode) => {
-  socket.emit('change_trading_mode', { mode });
-};
