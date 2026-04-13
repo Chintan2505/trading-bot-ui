@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Chart from '@/components/Chart';
 import { getHistoricalCandles, getTradeStats } from '@/services/api';
-import { socket, subscribeToSymbol, toggleAutoTrade, changeStrategy, updateScalpingSettings, getScalpingSettings, manualClosePosition, manualTestBuy } from '@/services/socket';
+import { socket, subscribeToSymbol, toggleAutoTrade, changeStrategy, updateScalpingSettings, getScalpingSettings, manualClosePosition, manualTestBuy, changeTradingMode } from '@/services/socket';
 import { toast } from 'sonner';
 import TradingView from '../view/trading.view';
 
@@ -90,7 +90,6 @@ export default function TradingContainer() {
   const [connectionStatus, setConnectionStatus] = useState(socket.connected ? 'connected' : 'disconnected');
   const [isAutoTrading, setIsAutoTrading] = useState(false);
   const [tradeLogs, setTradeLogs] = useState([]);
-  const [tradeMarkers, setTradeMarkers] = useState([]);
   const [botActivities, setBotActivities] = useState([]);
   const [strategyData, setStrategyData] = useState(null);
 
@@ -114,17 +113,13 @@ export default function TradingContainer() {
     qty: '0.001',
     cooldownMs: '3000',
     trailingStopEnabled: true,
-    selfLearningEnabled: true,
   });
-
-  // Self-learning engine state
-  const [learnedMinScore, setLearnedMinScore] = useState(2);
-  const [learningStats, setLearningStats] = useState({
-    byScore: { 2: { wins: 0, losses: 0 }, 3: { wins: 0, losses: 0 }, 4: { wins: 0, losses: 0 } },
-    sampleSize: 0,
-    lastTunedAt: null,
-  });
+  const [tradingMode, setTradingMode] = useState('algo'); // 'ai' or 'algo'
   const [scalpPositionState, setScalpPositionState] = useState({ isOpen: false, pendingOrder: false });
+  const [geminiStatus, setGeminiStatus] = useState({
+    action: 'WAIT', confidence: 0, reason: 'Waiting for first signal...', analyzedAt: null,
+    totalCalls: 0, totalBlocked: 0, minConfidence: 70,
+  });
   const [activeScalpLevels, setActiveScalpLevels] = useState(null); // { entry, tp, sl, side }
   const [tradeStats, setTradeStats] = useState(null); // { totalPnl, winRate, ... }
 
@@ -174,7 +169,6 @@ export default function TradingContainer() {
         }
         setHistoricalData(bars);
         setActiveSymbol(sym);
-        setTradeMarkers([]);
         setBotActivities([]);
         subscribeToSymbol(sym);
       } else {
@@ -286,24 +280,14 @@ export default function TradingContainer() {
 
     const onTradeExecuted = (trade) => {
       const now = Date.now();
-      const tradeTime = Math.floor(now / 1000);
 
       setTradeLogs(prev => [{
         id: now.toString(), timestamp: trade.timestamp || now, symbol: trade.symbol,
         rsi: trade.rsi?.toFixed(2), decision: trade.decision, strength: trade.strength,
-        orderId: trade.orderId, strategy: trade.strategy,
+        orderId: trade.orderId, strategy: trade.strategy, executedBy: trade.executedBy,
         entryPrice: trade.entryPrice, takeProfitPrice: trade.takeProfitPrice,
         stopLossPrice: trade.stopLossPrice, qty: trade.qty,
       }, ...prev].slice(0, 50));
-
-      // Dedupe by orderId so duplicate `trade_executed` events (StrictMode
-       // double-mount, server retries, etc.) don't stack multiple arrows on
-       // the same bar.
-      const markerKey = trade.orderId || `${trade.symbol}-${trade.decision}-${tradeTime}`;
-      setTradeMarkers(prev => {
-        if (prev.some(m => m.id === markerKey)) return prev;
-        return [...prev, { id: markerKey, time: tradeTime, decision: trade.decision }];
-      });
 
       // Set active SL/TP levels for chart price lines + immediately mark position open
       if (trade.strategy === 'scalping' && trade.entryPrice) {
@@ -352,7 +336,6 @@ export default function TradingContainer() {
         qty: (data.qty ?? 0.001).toString(),
         cooldownMs: (data.cooldownMs ?? 3000).toString(),
         trailingStopEnabled: data.trailingStopEnabled !== false,
-        selfLearningEnabled: data.selfLearningEnabled !== false,
       });
     };
 
@@ -431,12 +414,9 @@ export default function TradingContainer() {
             qty: (state.scalpSettings.qty ?? 0.001).toString(),
             cooldownMs: (state.scalpSettings.cooldownMs ?? 3000).toString(),
             trailingStopEnabled: state.scalpSettings.trailingStopEnabled !== false,
-            selfLearningEnabled: state.scalpSettings.selfLearningEnabled !== false,
           });
         }
       }
-      if (typeof state.learnedMinScore === 'number') setLearnedMinScore(state.learnedMinScore);
-      if (state.learningStats) setLearningStats(state.learningStats);
       if (state.position?.isOpen) {
         setScalpPositionState({ isOpen: true, pendingOrder: false });
         setActiveScalpLevels({
@@ -451,6 +431,8 @@ export default function TradingContainer() {
         setActiveScalpLevels(null);
       }
       if (state.stats) setTradeStats(state.stats);
+      if (state.gemini) setGeminiStatus(state.gemini);
+      if (state.tradingMode) setTradingMode(state.tradingMode);
       if (Array.isArray(state.recentTrades)) {
         const logs = state.recentTrades.map(t => ({
           id: String(t._id),
@@ -464,31 +446,15 @@ export default function TradingContainer() {
           entryPrice: t.entryPrice,
           takeProfitPrice: t.takeProfitPrice,
           stopLossPrice: t.stopLossPrice,
+          executedBy: t.executedBy,
           exitPrice: t.exitPrice,
+          exitReason: t.exitReason,
           pnl: t.pnl,
           pnlPct: t.pnlPct,
           status: t.status,
         }));
         setTradeLogs(logs);
 
-        // Restore chart markers from history. Filter to current symbol so
-        // markers from previous symbols don't pollute the chart, and dedupe
-        // by orderId.
-        const seen = new Set();
-        const markers = state.recentTrades
-          .filter(t => t.symbol === state.symbol && t.createdAt)
-          .map(t => {
-            const id = t.orderId || String(t._id);
-            if (seen.has(id)) return null;
-            seen.add(id);
-            return {
-              id,
-              time: Math.floor(new Date(t.createdAt).getTime() / 1000),
-              decision: t.decision,
-            };
-          })
-          .filter(Boolean);
-        setTradeMarkers(markers);
       }
     };
 
@@ -512,6 +478,14 @@ export default function TradingContainer() {
       });
     };
 
+    const onTradingModeChanged = (data) => {
+      if (data.mode) setTradingMode(data.mode);
+    };
+
+    const onGeminiUpdate = (data) => {
+      if (data) setGeminiStatus(data);
+    };
+
     // Trailing stop fired — backend moved SL to break-even. Update chart line
     // and the position panel without closing the position.
     const onPositionUpdated = (data) => {
@@ -529,20 +503,6 @@ export default function TradingContainer() {
       }
     };
 
-    // Self-learning engine produced an updated threshold or stats
-    const onLearningUpdate = (data) => {
-      if (typeof data.learnedMinScore === 'number') {
-        setLearnedMinScore(prev => {
-          if (prev !== data.learnedMinScore) {
-            toast.info(`🧠 Score threshold ${prev} → ${data.learnedMinScore}`, {
-              description: 'Self-learning engine adjusted the minimum signal score',
-            });
-          }
-          return data.learnedMinScore;
-        });
-      }
-      if (data.learningStats) setLearningStats(data.learningStats);
-    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
@@ -558,7 +518,8 @@ export default function TradingContainer() {
     socket.on('stream_status', onStreamStatus);
     socket.on('trade_error', onTradeError);
     socket.on('position_updated', onPositionUpdated);
-    socket.on('learning_update', onLearningUpdate);
+    socket.on('gemini_update', onGeminiUpdate);
+    socket.on('trading_mode_changed', onTradingModeChanged);
 
     changeStrategy('scalping');
     getScalpingSettings();
@@ -587,7 +548,8 @@ export default function TradingContainer() {
       socket.off('stream_status', onStreamStatus);
       socket.off('trade_error', onTradeError);
       socket.off('position_updated', onPositionUpdated);
-      socket.off('learning_update', onLearningUpdate);
+      socket.off('gemini_update', onGeminiUpdate);
+      socket.off('trading_mode_changed', onTradingModeChanged);
     };
   }, []);
 
@@ -653,8 +615,12 @@ export default function TradingContainer() {
       qty,
       cooldownMs: cooldown,
       trailingStopEnabled: !!updated.trailingStopEnabled,
-      selfLearningEnabled: !!updated.selfLearningEnabled,
     });
+  };
+
+  const handleTradingModeChange = (mode) => {
+    changeTradingMode(mode);
+    setTradingMode(mode);
   };
 
   const handleManualClose = () => {
@@ -721,7 +687,6 @@ export default function TradingContainer() {
       connectionStatus={connectionStatus}
       isAutoTrading={isAutoTrading}
       tradeLogs={tradeLogs}
-      tradeMarkers={tradeMarkers}
       botActivities={botActivities}
       strategyData={strategyData}
       // Derived
@@ -755,8 +720,9 @@ export default function TradingContainer() {
       handleScalpSettingChange={handleScalpSettingChange}
       handleManualClose={handleManualClose}
       handleManualTestBuy={handleManualTestBuy}
-      learnedMinScore={learnedMinScore}
-      learningStats={learningStats}
+      geminiStatus={geminiStatus}
+      tradingMode={tradingMode}
+      handleTradingModeChange={handleTradingModeChange}
       handlePeriodSelect={handlePeriodSelect}
       handleFilterChange={handleFilterChange}
       handleResetFilters={handleResetFilters}

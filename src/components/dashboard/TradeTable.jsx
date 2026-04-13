@@ -25,6 +25,19 @@ const EXIT_REASON_LABEL = {
   MAX_HOLD: 'TIME',
   MANUAL: 'MAN',
   REVERSE_SIGNAL: 'REV',
+  BREAK_EVEN: 'BE',
+};
+
+const EXECUTED_BY_STYLES = {
+  ai: 'bg-blue-500/10 text-blue-400',
+  algo: 'bg-gold/10 text-gold',
+  manual: 'bg-gray-500/10 text-gray-400',
+};
+
+const EXECUTED_BY_LABEL = {
+  ai: '🤖 AI',
+  algo: '📊 ALGO',
+  manual: '🧪 TEST',
 };
 
 export default function TradeTable({ logs }) {
@@ -52,6 +65,7 @@ export default function TradeTable({ logs }) {
               <th className="text-left px-3 py-2.5 font-semibold">Time</th>
               <th className="text-left px-3 py-2.5 font-semibold">Symbol</th>
               <th className="text-left px-3 py-2.5 font-semibold">Side</th>
+              <th className="text-center px-3 py-2.5 font-semibold">Source</th>
               <th className="text-right px-3 py-2.5 font-semibold">Entry</th>
               <th className="text-right px-3 py-2.5 font-semibold">Exit</th>
               <th className="text-right px-3 py-2.5 font-semibold">P&amp;L</th>
@@ -89,6 +103,11 @@ export default function TradeTable({ logs }) {
                         : <ArrowDownRight className="w-3 h-3" />
                       }
                       {log.decision}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${EXECUTED_BY_STYLES[log.executedBy] || 'bg-gray-500/10 text-gray-400'}`}>
+                      {EXECUTED_BY_LABEL[log.executedBy] || log.executedBy || 'ALGO'}
                     </span>
                   </td>
                   <td className="px-3 py-3 text-right font-mono text-xs text-gray-300">

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart, CandlestickSeries, HistogramSeries, CrosshairMode, createSeriesMarkers } from 'lightweight-charts';
+import { createChart, CandlestickSeries, HistogramSeries, CrosshairMode } from 'lightweight-charts';
 
 // IST offset in seconds (+5:30 = 19800s)
 const IST_OFFSET_SEC = 5.5 * 60 * 60;
@@ -17,12 +17,11 @@ const CHART_COLORS = {
   volumeDown: '#ff497618',
 };
 
-export default function Chart({ data, liveBar, trades = [], scalpLevels = null }) {
+export default function Chart({ data, liveBar, scalpLevels = null }) {
   const containerRef = useRef();
   const chartRef = useRef();
   const candleRef = useRef();
   const volumeRef = useRef();
-  const markersRef = useRef(null);
   const priceLinesRef = useRef([]);
 
   useEffect(() => {
@@ -125,36 +124,9 @@ export default function Chart({ data, liveBar, trades = [], scalpLevels = null }
 
     return () => {
       ro.disconnect();
-      if (markersRef.current) markersRef.current.detach();
       chart.remove();
     };
   }, [data]);
-
-  // Trade markers
-  // NOTE: depends on `data` too — the chart is fully recreated whenever
-  // historical data arrives, which destroys any markers. Re-running this
-  // effect after data change ensures markers are reattached.
-  useEffect(() => {
-    if (!candleRef.current) return;
-    if (markersRef.current) { markersRef.current.detach(); markersRef.current = null; }
-    if (trades.length === 0) return;
-
-    const markers = trades
-      .filter(t => t.time)
-      .map(t => ({
-        time: t.time + IST_OFFSET_SEC,
-        position: t.decision === 'BUY' ? 'belowBar' : 'aboveBar',
-        color: t.decision === 'BUY' ? CHART_COLORS.candleUp : CHART_COLORS.candleDown,
-        shape: t.decision === 'BUY' ? 'arrowUp' : 'arrowDown',
-        text: t.decision,
-        size: 2,
-      }))
-      .sort((a, b) => a.time - b.time);
-
-    if (markers.length > 0) {
-      markersRef.current = createSeriesMarkers(candleRef.current, markers);
-    }
-  }, [trades, data]);
 
   // SL/TP price lines for active scalp position
   // NOTE: depends on `data` too — see comment on the trade-markers effect.
@@ -216,15 +188,26 @@ export default function Chart({ data, liveBar, trades = [], scalpLevels = null }
 
   // Live updates
   useEffect(() => {
-    if (!liveBar) return;
-    const shifted = { ...liveBar, time: liveBar.time + IST_OFFSET_SEC };
-    if (candleRef.current) candleRef.current.update(shifted);
-    if (volumeRef.current) {
-      volumeRef.current.update({
-        time: shifted.time,
-        value: shifted.volume || 0,
-        color: shifted.close >= shifted.open ? CHART_COLORS.volumeUp : CHART_COLORS.volumeDown,
-      });
+    if (!liveBar || !candleRef.current) return;
+
+    // Ensure time is a valid unix timestamp (number), not an object or undefined
+    const rawTime = typeof liveBar.time === 'number' ? liveBar.time : null;
+    if (!rawTime || !isFinite(rawTime)) return;
+
+    const shifted = { ...liveBar, time: rawTime + IST_OFFSET_SEC };
+
+    try {
+      candleRef.current.update(shifted);
+      if (volumeRef.current) {
+        volumeRef.current.update({
+          time: shifted.time,
+          value: shifted.volume || 0,
+          color: shifted.close >= shifted.open ? CHART_COLORS.volumeUp : CHART_COLORS.volumeDown,
+        });
+      }
+    } catch {
+      // "Cannot update oldest data" — live bar has a time older than the
+      // last bar in the series. Safe to ignore; the next bar will be newer.
     }
   }, [liveBar]);
 

@@ -83,3 +83,7 @@ export const manualClosePosition = () => {
 export const manualTestBuy = () => {
   socket.emit('manual_test_buy');
 };
+
+export const changeTradingMode = (mode) => {
+  socket.emit('change_trading_mode', { mode });
+};
