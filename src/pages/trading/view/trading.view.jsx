@@ -752,7 +752,23 @@ export default function TradingView({
             <div className="p-3 border-b border-terminal-border flex-shrink-0">
               <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-2">Scalping Settings</span>
               <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
+                {/* Auto SL/TP Toggle */}
+                <div className="p-2 rounded-lg bg-terminal-bg border border-terminal-border">
+                  <label className="flex items-center justify-between cursor-pointer text-[10px]">
+                    <div className="flex flex-col">
+                      <span className="text-gray-300 font-semibold">🤖 Auto SL/TP</span>
+                      <span className="text-[8px] text-gray-600">{scalpSettings.autoSlTp ? 'AI decides SL & TP levels' : 'Manual / ATR-based levels'}</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={!!scalpSettings.autoSlTp}
+                      onChange={(e) => handleScalpSettingChange('autoSlTp', e.target.checked)}
+                      className="w-4 h-4 accent-blue-500 cursor-pointer"
+                    />
+                  </label>
+                </div>
+
+                <div className={`grid grid-cols-2 gap-2 ${scalpSettings.autoSlTp ? 'opacity-40 pointer-events-none' : ''}`}>
                   <div className="space-y-1">
                     <SettingLabel label="Take Profit %" tooltip="Auto-sell when price rises by this % from entry" />
                     <input
@@ -760,9 +776,10 @@ export default function TradingView({
                       value={scalpSettings.takeProfitPct}
                       onChange={(e) => handleScalpSettingChange('takeProfitPct', e.target.value)}
                       min="0.05" max="5" step="0.05"
-                      className="w-full bg-terminal-bg border border-terminal-border rounded-lg px-2.5 py-1.5 text-sm font-mono text-bull focus:outline-none focus:border-bull/50 transition-colors"
+                      disabled={scalpSettings.autoSlTp}
+                      className="w-full bg-terminal-bg border border-terminal-border rounded-lg px-2.5 py-1.5 text-sm font-mono text-bull focus:outline-none focus:border-bull/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     />
-                    {currentPrice > 0 && (
+                    {currentPrice > 0 && !scalpSettings.autoSlTp && (
                       <div className="text-[9px] font-mono text-bull/70">
                         ≈ ${(currentPrice * (1 + scalpSettings.takeProfitPct / 100)).toFixed(2)}
                       </div>
@@ -775,9 +792,10 @@ export default function TradingView({
                       value={scalpSettings.stopLossPct}
                       onChange={(e) => handleScalpSettingChange('stopLossPct', e.target.value)}
                       min="0.05" max="5" step="0.05"
-                      className="w-full bg-terminal-bg border border-terminal-border rounded-lg px-2.5 py-1.5 text-sm font-mono text-bear focus:outline-none focus:border-bear/50 transition-colors"
+                      disabled={scalpSettings.autoSlTp}
+                      className="w-full bg-terminal-bg border border-terminal-border rounded-lg px-2.5 py-1.5 text-sm font-mono text-bear focus:outline-none focus:border-bear/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     />
-                    {currentPrice > 0 && (
+                    {currentPrice > 0 && !scalpSettings.autoSlTp && (
                       <div className="text-[9px] font-mono text-bear/70">
                         ≈ ${(currentPrice * (1 - scalpSettings.stopLossPct / 100)).toFixed(2)}
                       </div>

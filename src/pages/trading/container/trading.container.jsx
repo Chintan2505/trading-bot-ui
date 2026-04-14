@@ -112,6 +112,7 @@ export default function TradingContainer() {
     qty: '0.001',
     cooldownMs: '3000',
     trailingStopEnabled: true,
+    autoSlTp: false,
   });
   const [scalpPositionState, setScalpPositionState] = useState({ isOpen: false, pendingOrder: false });
   const [geminiStatus, setGeminiStatus] = useState({
@@ -235,14 +236,19 @@ export default function TradingContainer() {
 
     const onTradeExecuted = (trade) => {
       const now = Date.now();
+      const tradeId = trade.orderId || now.toString();
 
-      setTradeLogs(prev => [{
-        id: now.toString(), timestamp: trade.timestamp || now, symbol: trade.symbol,
-        decision: trade.decision,
-        orderId: trade.orderId, strategy: trade.strategy, executedBy: trade.executedBy,
-        entryPrice: trade.entryPrice, takeProfitPrice: trade.takeProfitPrice,
-        stopLossPrice: trade.stopLossPrice, qty: trade.qty,
-      }, ...prev].slice(0, 50));
+      setTradeLogs(prev => {
+        // Dedup — don't add if orderId already exists
+        if (trade.orderId && prev.some(t => t.orderId === trade.orderId)) return prev;
+        return [{
+          id: tradeId, timestamp: trade.timestamp || now, symbol: trade.symbol,
+          decision: trade.decision,
+          orderId: trade.orderId, strategy: trade.strategy, executedBy: trade.executedBy,
+          entryPrice: trade.entryPrice, takeProfitPrice: trade.takeProfitPrice,
+          stopLossPrice: trade.stopLossPrice, qty: trade.qty, status: 'OPEN',
+        }, ...prev].slice(0, 50);
+      });
 
       // Set active SL/TP levels for chart price lines + immediately mark position open
       if (trade.strategy === 'scalping' && trade.entryPrice) {
@@ -366,6 +372,7 @@ export default function TradingContainer() {
             qty: (state.scalpSettings.qty ?? 0.001).toString(),
             cooldownMs: (state.scalpSettings.cooldownMs ?? 3000).toString(),
             trailingStopEnabled: state.scalpSettings.trailingStopEnabled !== false,
+            autoSlTp: state.scalpSettings.autoSlTp === true,
           });
         }
       }
