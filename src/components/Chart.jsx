@@ -130,10 +130,11 @@ export default function Chart({ data, liveBar, scalpLevels = null, measureMode =
     };
   }, [data]);
 
-  // SL/TP price lines
-  useEffect(() => {
+  // SL/TP price lines — rebuild when scalpLevels change OR when chart recreates (data change)
+  const drawPriceLines = useCallback(() => {
     if (!candleRef.current) return;
 
+    // Remove existing lines
     priceLinesRef.current.forEach(line => {
       try { candleRef.current.removePriceLine(line); } catch { /* ignore */ }
     });
@@ -176,7 +177,19 @@ export default function Chart({ data, liveBar, scalpLevels = null, measureMode =
         title: `SL $${sl.toFixed(2)}`,
       }));
     }
-  }, [scalpLevels, data]);
+  }, [scalpLevels]);
+
+  // Draw when scalpLevels change
+  useEffect(() => {
+    drawPriceLines();
+  }, [scalpLevels, drawPriceLines]);
+
+  // Re-draw after chart recreates (data change) — small delay to let chart init
+  useEffect(() => {
+    if (!scalpLevels) return;
+    const timer = setTimeout(drawPriceLines, 100);
+    return () => clearTimeout(timer);
+  }, [data, drawPriceLines, scalpLevels]);
 
   // Live updates
   useEffect(() => {

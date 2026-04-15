@@ -113,6 +113,7 @@ export default function TradingContainer() {
     cooldownMs: '3000',
     trailingStopEnabled: true,
     autoSlTp: false,
+    partialTpEnabled: false,
   });
   const [scalpPositionState, setScalpPositionState] = useState({ isOpen: false, pendingOrder: false });
   const [geminiStatus, setGeminiStatus] = useState({
@@ -235,6 +236,7 @@ export default function TradingContainer() {
     const onStrategyUpdate = () => {};
 
     const onTradeExecuted = (trade) => {
+      console.log("🚀 ~ onTradeExecuted ~ trade:", trade)
       const now = Date.now();
       const tradeId = trade.orderId || now.toString();
 
@@ -294,6 +296,7 @@ export default function TradingContainer() {
         qty: (data.qty ?? 0.001).toString(),
         cooldownMs: (data.cooldownMs ?? 3000).toString(),
         trailingStopEnabled: data.trailingStopEnabled !== false,
+        partialTpEnabled: data.partialTpEnabled === true,
       });
     };
 
@@ -307,6 +310,7 @@ export default function TradingContainer() {
     };
 
     const onPositionClosed = (data) => {
+      console.log("🚀 ~ onPositionClosed ~ data:", data)
       setScalpPositionState({ isOpen: false, pendingOrder: false });
       setActiveScalpLevels(null);
 
@@ -373,6 +377,7 @@ export default function TradingContainer() {
             cooldownMs: (state.scalpSettings.cooldownMs ?? 3000).toString(),
             trailingStopEnabled: state.scalpSettings.trailingStopEnabled !== false,
             autoSlTp: state.scalpSettings.autoSlTp === true,
+            partialTpEnabled: state.scalpSettings.partialTpEnabled === true,
           });
         }
       }
@@ -391,27 +396,7 @@ export default function TradingContainer() {
       }
       if (state.stats) setTradeStats(state.stats);
       if (state.gemini) setGeminiStatus(state.gemini);
-      if (Array.isArray(state.recentTrades)) {
-        const logs = state.recentTrades.map(t => ({
-          id: String(t._id),
-          timestamp: new Date(t.createdAt).getTime(),
-          symbol: t.symbol,
-          decision: t.decision,
-          strategy: t.strategy,
-          orderId: t.orderId,
-          entryPrice: t.entryPrice,
-          takeProfitPrice: t.takeProfitPrice,
-          stopLossPrice: t.stopLossPrice,
-          executedBy: t.executedBy,
-          exitPrice: t.exitPrice,
-          exitReason: t.exitReason,
-          pnl: t.pnl,
-          pnlPct: t.pnlPct,
-          status: t.status,
-        }));
-        setTradeLogs(logs);
-
-      }
+      // Trade history is now loaded directly from API by TradeTable component
     };
 
     const onStreamStatus = (data) => {
@@ -508,17 +493,23 @@ export default function TradingContainer() {
     e.preventDefault();
     if (symbol.trim()) {
       const sym = symbol.toUpperCase();
+      console.log("🚀 ~ handleSymbolSubmit ~ sym:", sym)
       const period = PERIODS.find(p => p.label === activePeriod) || PERIODS[0];
       const { start, end } = getPeriodDates(period, sym);
+      setActiveScalpLevels(null);
+      setScalpPositionState({ isOpen: false, pendingOrder: false });
       initMarketData(sym, period.timeframe, { start, end });
       setSearchOpen(false);
     }
   };
 
   const handleWatchlistClick = (sym) => {
+    console.log("🚀 ~ handleWatchlistClick ~ sym:", sym)
     setSymbol(sym);
     const period = PERIODS.find(p => p.label === activePeriod) || PERIODS[0];
     const { start, end } = getPeriodDates(period, sym);
+    setActiveScalpLevels(null);
+    setScalpPositionState({ isOpen: false, pendingOrder: false });
     initMarketData(sym, period.timeframe, { start, end });
   };
 
@@ -565,6 +556,7 @@ export default function TradingContainer() {
       qty,
       cooldownMs: cooldown,
       trailingStopEnabled: !!updated.trailingStopEnabled,
+      partialTpEnabled: !!updated.partialTpEnabled,
     });
   };
 
