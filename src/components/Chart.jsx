@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { createChart, CandlestickSeries, HistogramSeries, CrosshairMode } from 'lightweight-charts';
+import { createChart, CandlestickSeries, HistogramSeries, CrosshairMode, createSeriesMarkers } from 'lightweight-charts';
 
 // IST offset in seconds (+5:30 = 19800s)
 const IST_OFFSET_SEC = 5.5 * 60 * 60;
@@ -17,12 +17,15 @@ const CHART_COLORS = {
   volumeDown: '#ff497618',
 };
 
-export default function Chart({ data, liveBar, scalpLevels = null, measureMode = false, onMeasureEnd }) {
+export default function Chart({ data, liveBar, scalpLevels = null, hoveredTrade = null, measureMode = false, onMeasureEnd }) {
   const containerRef = useRef();
   const chartRef = useRef();
   const candleRef = useRef();
   const volumeRef = useRef();
   const priceLinesRef = useRef([]);
+  const hoverLinesRef = useRef([]);
+  const hoverOverlayRef = useRef(null);
+  const hoverMarkersRef = useRef(null); // native series markers primitive
 
   // Measure tool state
   const overlayRef = useRef(null);
@@ -126,11 +129,17 @@ export default function Chart({ data, liveBar, scalpLevels = null, measureMode =
 
     return () => {
       ro.disconnect();
+      // Marker primitive is attached to the candle series which gets destroyed
+      // with the chart — clear our ref so next useEffect creates a fresh one.
+      hoverMarkersRef.current = null;
       chart.remove();
     };
   }, [data]);
 
-  // SL/TP price lines — rebuild when scalpLevels change OR when chart recreates (data change)
+  // SL/TP price lines — rebuild when scalpLevels change OR when chart recreates (data change).
+  // NOTE: When a trade is being hovered from history, we HIDE the live scalpLevels lines
+  // to avoid visual overlap (live ENTRY/TP/SL would render on top of the hovered trade's
+  // ENTRY/TP/SL lines at the same prices). The live lines are restored on mouse-leave.
   const drawPriceLines = useCallback(() => {
     if (!candleRef.current) return;
 
@@ -140,6 +149,8 @@ export default function Chart({ data, liveBar, scalpLevels = null, measureMode =
     });
     priceLinesRef.current = [];
 
+    // Skip drawing live scalpLevels if a historical trade is being hovered
+    if (hoveredTrade) return;
     if (!scalpLevels) return;
 
     const { entry, tp, sl, side } = scalpLevels;
@@ -177,12 +188,12 @@ export default function Chart({ data, liveBar, scalpLevels = null, measureMode =
         title: `SL $${sl.toFixed(2)}`,
       }));
     }
-  }, [scalpLevels]);
+  }, [scalpLevels, hoveredTrade]);
 
-  // Draw when scalpLevels change
+  // Draw when scalpLevels or hoveredTrade change
   useEffect(() => {
     drawPriceLines();
-  }, [scalpLevels, drawPriceLines]);
+  }, [scalpLevels, hoveredTrade, drawPriceLines]);
 
   // Re-draw after chart recreates (data change) — small delay to let chart init
   useEffect(() => {
@@ -213,6 +224,272 @@ export default function Chart({ data, liveBar, scalpLevels = null, measureMode =
       // "Cannot update oldest data" — safe to ignore
     }
   }, [liveBar]);
+
+  // ────────────────────── HOVER TRADE OVERLAY ──────────────────────
+  // When user hovers a trade in the history panel, draw price lines
+  // (entry, partial, exit, TP, SL) and time-based markers on the chart
+  // showing exactly where buy/sell/partial happened.
+
+  const clearHoverOverlay = useCallback(() => {
+    // Remove price lines
+    hoverLinesRef.current.forEach(line => {
+      try { candleRef.current?.removePriceLine(line); } catch { /* ignore */ }
+    });
+    hoverLinesRef.current = [];
+    // Clear native series markers
+    if (hoverMarkersRef.current) {
+      try { hoverMarkersRef.current.setMarkers([]); } catch { /* ignore */ }
+    }
+    // Clear canvas overlay (vertical lines layer)
+    if (hoverOverlayRef.current) {
+      const canvas = hoverOverlayRef.current;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }, []);
+
+  // Build native lightweight-charts markers (drawn directly ON candles with arrows + labels)
+  // These are rendered by the chart library itself — zoom/scroll-safe and always visible
+  // at the correct candle position. We ALSO draw our own full-height vertical lines on a
+  // separate canvas for extra visibility.
+  const drawHoverMarkers = useCallback(() => {
+    if (!chartRef.current || !candleRef.current) return;
+
+    // Always clear first
+    if (hoverMarkersRef.current) {
+      try { hoverMarkersRef.current.setMarkers([]); } catch { /* ignore */ }
+    }
+    if (hoverOverlayRef.current) {
+      const canvas = hoverOverlayRef.current;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
+    }
+
+    if (!hoveredTrade) return;
+
+    const side = hoveredTrade.decision || hoveredTrade.side;
+    const markers = [];
+
+    // Entry marker (BUY/SELL arrow below/above the candle)
+    if (hoveredTrade.createdAt && hoveredTrade.entryPrice) {
+      const t = Math.floor(new Date(hoveredTrade.createdAt).getTime() / 1000) + IST_OFFSET_SEC;
+      markers.push({
+        time: t,
+        position: side === 'BUY' ? 'belowBar' : 'aboveBar',
+        color: '#f0b90b',
+        shape: side === 'BUY' ? 'arrowUp' : 'arrowDown',
+        text: `${side} $${hoveredTrade.entryPrice.toFixed(2)}`,
+        size: 2,
+      });
+    }
+
+    // Partial marker
+    if (hoveredTrade.partialTaken && hoveredTrade.partialPrice && hoveredTrade.createdAt && hoveredTrade.closedAt) {
+      const openMs = new Date(hoveredTrade.createdAt).getTime();
+      const closeMs = new Date(hoveredTrade.closedAt).getTime();
+      const midMs = openMs + (closeMs - openMs) / 2;
+      const t = Math.floor(midMs / 1000) + IST_OFFSET_SEC;
+      markers.push({
+        time: t,
+        position: side === 'BUY' ? 'aboveBar' : 'belowBar',
+        color: '#eab308',
+        shape: 'circle',
+        text: `PARTIAL $${hoveredTrade.partialPrice.toFixed(2)}`,
+        size: 2,
+      });
+    }
+
+    // Exit marker (opposite direction from entry)
+    if (hoveredTrade.closedAt && hoveredTrade.exitPrice) {
+      const t = Math.floor(new Date(hoveredTrade.closedAt).getTime() / 1000) + IST_OFFSET_SEC;
+      const pnl = hoveredTrade.pnl ?? 0;
+      const color = pnl >= 0 ? '#00d4aa' : '#ff4976';
+      const exitSide = side === 'BUY' ? 'SELL' : 'COVER';
+      markers.push({
+        time: t,
+        position: side === 'BUY' ? 'aboveBar' : 'belowBar',
+        color,
+        shape: side === 'BUY' ? 'arrowDown' : 'arrowUp',
+        text: `${exitSide} $${hoveredTrade.exitPrice.toFixed(2)}`,
+        size: 2,
+      });
+    }
+
+    // Sort by time (lightweight-charts requires ascending)
+    markers.sort((a, b) => a.time - b.time);
+
+    // Create or update marker primitive on the candle series
+    if (markers.length > 0) {
+      try {
+        if (!hoverMarkersRef.current) {
+          hoverMarkersRef.current = createSeriesMarkers(candleRef.current, markers);
+        } else {
+          hoverMarkersRef.current.setMarkers(markers);
+        }
+      } catch (err) {
+        console.warn('[Chart] setMarkers failed:', err.message);
+      }
+    }
+
+    // ── Also draw full-height vertical guide lines on the canvas ──
+    // This gives extra visual cue across the whole chart height
+    if (!hoverOverlayRef.current) return;
+    const canvas = hoverOverlayRef.current;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.offsetWidth * dpr;
+    canvas.height = canvas.offsetHeight * dpr;
+    ctx.scale(dpr, dpr);
+    const chartH = canvas.offsetHeight;
+    const chartW = canvas.offsetWidth;
+    const timeScale = chartRef.current.timeScale();
+
+    const drawVerticalGuide = (unixSec, color) => {
+      if (!unixSec) return;
+      const t = unixSec + IST_OFFSET_SEC;
+      const rawX = timeScale.timeToCoordinate(t);
+      if (rawX == null || rawX < 0 || rawX > chartW) return;
+      // Thin vertical band (highlights the candle column)
+      ctx.fillStyle = color + '25';
+      ctx.fillRect(rawX - 6, 0, 12, chartH);
+      // Dashed full-height line
+      ctx.beginPath();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = color + 'aa';
+      ctx.lineWidth = 1.5;
+      ctx.moveTo(rawX, 0);
+      ctx.lineTo(rawX, chartH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+
+    if (hoveredTrade.createdAt) {
+      drawVerticalGuide(Math.floor(new Date(hoveredTrade.createdAt).getTime() / 1000), '#f0b90b');
+    }
+    if (hoveredTrade.partialTaken && hoveredTrade.createdAt && hoveredTrade.closedAt) {
+      const openMs = new Date(hoveredTrade.createdAt).getTime();
+      const closeMs = new Date(hoveredTrade.closedAt).getTime();
+      const midMs = openMs + (closeMs - openMs) / 2;
+      drawVerticalGuide(Math.floor(midMs / 1000), '#eab308');
+    }
+    if (hoveredTrade.closedAt) {
+      const pnl = hoveredTrade.pnl ?? 0;
+      drawVerticalGuide(
+        Math.floor(new Date(hoveredTrade.closedAt).getTime() / 1000),
+        pnl >= 0 ? '#00d4aa' : '#ff4976',
+      );
+    }
+  }, [hoveredTrade]);
+
+  const drawHoverLines = useCallback(() => {
+    if (!candleRef.current) return;
+    // Clear previous
+    hoverLinesRef.current.forEach(line => {
+      try { candleRef.current.removePriceLine(line); } catch { /* ignore */ }
+    });
+    hoverLinesRef.current = [];
+
+    if (!hoveredTrade) return;
+
+    const { entryPrice, exitPrice, takeProfitPrice, stopLossPrice, partialPrice, partialTaken, pnl, decision, side } = hoveredTrade;
+    const isBuy = (decision || side) === 'BUY';
+    const pnlPositive = (pnl ?? 0) >= 0;
+
+    if (entryPrice != null) {
+      hoverLinesRef.current.push(candleRef.current.createPriceLine({
+        price: entryPrice,
+        color: '#f0b90b',
+        lineWidth: 2,
+        lineStyle: 0,
+        axisLabelVisible: true,
+        title: `◉ ${isBuy ? 'BUY' : 'SELL'} $${entryPrice.toFixed(2)}`,
+      }));
+    }
+
+    if (takeProfitPrice != null) {
+      hoverLinesRef.current.push(candleRef.current.createPriceLine({
+        price: takeProfitPrice,
+        color: CHART_COLORS.candleUp,
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: `TP $${takeProfitPrice.toFixed(2)}`,
+      }));
+    }
+
+    if (stopLossPrice != null) {
+      hoverLinesRef.current.push(candleRef.current.createPriceLine({
+        price: stopLossPrice,
+        color: CHART_COLORS.candleDown,
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: `SL $${stopLossPrice.toFixed(2)}`,
+      }));
+    }
+
+    if (partialTaken && partialPrice != null) {
+      hoverLinesRef.current.push(candleRef.current.createPriceLine({
+        price: partialPrice,
+        color: '#eab308',
+        lineWidth: 2,
+        lineStyle: 1,
+        axisLabelVisible: true,
+        title: `◐ PARTIAL $${partialPrice.toFixed(2)}`,
+      }));
+    }
+
+    if (exitPrice != null) {
+      const color = pnlPositive ? CHART_COLORS.candleUp : CHART_COLORS.candleDown;
+      hoverLinesRef.current.push(candleRef.current.createPriceLine({
+        price: exitPrice,
+        color,
+        lineWidth: 2,
+        lineStyle: 0,
+        axisLabelVisible: true,
+        title: `✕ EXIT $${exitPrice.toFixed(2)}`,
+      }));
+    }
+  }, [hoveredTrade]);
+
+  // Apply / clear hover overlay when hoveredTrade changes
+  useEffect(() => {
+    if (!hoveredTrade) {
+      clearHoverOverlay();
+      return;
+    }
+    drawHoverLines();
+
+    // Auto-scroll chart so the trade's candle(s) are visible in the center.
+    // Without this, older trades would be off-screen and markers invisible.
+    if (chartRef.current && hoveredTrade.createdAt) {
+      const openT = Math.floor(new Date(hoveredTrade.createdAt).getTime() / 1000) + IST_OFFSET_SEC;
+      const closeT = hoveredTrade.closedAt
+        ? Math.floor(new Date(hoveredTrade.closedAt).getTime() / 1000) + IST_OFFSET_SEC
+        : openT + 60;
+      try {
+        const ts = chartRef.current.timeScale();
+        // Give ~20 bars of padding on each side
+        const padding = 20 * 60;
+        ts.setVisibleRange({ from: openT - padding, to: closeT + padding });
+      } catch { /* ignore */ }
+    }
+
+    // Draw markers after scroll is applied
+    const drawTimer = setTimeout(drawHoverMarkers, 50);
+
+    // Redraw markers on chart pan/zoom
+    if (!chartRef.current) {
+      return () => clearTimeout(drawTimer);
+    }
+    const ts = chartRef.current.timeScale();
+    const handler = () => drawHoverMarkers();
+    ts.subscribeVisibleLogicalRangeChange(handler);
+    return () => {
+      clearTimeout(drawTimer);
+      try { ts.unsubscribeVisibleLogicalRangeChange(handler); } catch { /* ignore */ }
+    };
+  }, [hoveredTrade, drawHoverLines, drawHoverMarkers, clearHoverOverlay]);
 
   // ────────────────────── MEASURE TOOL ──────────────────────
 
@@ -424,6 +701,12 @@ export default function Chart({ data, liveBar, scalpLevels = null, measureMode =
 
   return (
     <div ref={containerRef} className="w-full h-full relative">
+      {/* Hover trade overlay — shows markers for buy/partial/sell on hover */}
+      <canvas
+        ref={hoverOverlayRef}
+        className="absolute inset-0 w-full h-full z-[9]"
+        style={{ pointerEvents: 'none' }}
+      />
       {/* Measure overlay canvas — sits on top of chart */}
       <canvas
         ref={overlayRef}

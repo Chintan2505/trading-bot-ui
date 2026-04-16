@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import TradeTable from "@/components/dashboard/TradeTable";
 import TradeStatsPanel from "@/components/dashboard/TradeStatsPanel";
 import BotActivityFeed from "@/components/dashboard/BotActivityFeed";
+import TradeHistoryPanel from "@/components/trading/TradeHistoryPanel";
+import TradeHoverCard from "@/components/trading/TradeHoverCard";
 import { SettingLabel } from "@/components/ui/tooltip";
 import {
   Activity,
@@ -18,6 +20,9 @@ import {
   RotateCcw,
   PanelRightOpen,
   PanelRightClose,
+  PanelLeftOpen,
+  PanelLeftClose,
+  History,
   Clock,
   TrendingUp,
   TrendingDown,
@@ -346,14 +351,17 @@ export default function TradingView({
   drawerOpen,
   setDrawerOpen,
   leftSidebarOpen,
-  filtersOpen,
-  setFiltersOpen,
-  filters,
   // Scalping
   scalpSettings,
   scalpPositionState,
   activeScalpLevels,
   tradeStats,
+  hoveredTrade,
+  pinnedTrade,
+  onHoverTrade,
+  onLeaveTrade,
+  onToggleTradePin,
+  onUnpinTrade,
   // Refs
   searchRef,
   // Handlers
@@ -377,6 +385,7 @@ export default function TradingView({
 }) {
   console.log("🚀 ~ TradingView ~ scalpPositionState:", scalpPositionState);
   const [measureMode, setMeasureMode] = useState(false);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
 
   return (
     <div className="flex-1 flex flex-col relative overflow-hidden">
@@ -548,8 +557,68 @@ export default function TradingView({
 
       {/* ═══════════ MAIN CONTENT ═══════════ */}
       <div className="flex-1 flex overflow-hidden">
-        {/* ── Left Sidebar: Strategy Signals ── */}
+        {/* ── Left Sidebar: Trade History (collapsible) ── */}
         {leftSidebarOpen && (
+          <aside
+            className={`flex-shrink-0 border-r border-terminal-border bg-terminal-card/30 overflow-hidden hidden lg:flex flex-col transition-[width] duration-200 ${
+              leftPanelCollapsed ? "w-10" : "w-64"
+            }`}
+          >
+            {leftPanelCollapsed ? (
+              <button
+                onClick={() => setLeftPanelCollapsed(false)}
+                className="h-full w-full flex flex-col items-center justify-start pt-3 gap-2 text-gray-500 hover:text-white hover:bg-terminal-hover transition-colors group"
+                title="Expand trade history"
+              >
+                <PanelLeftOpen className="w-4 h-4" />
+                <History className="w-4 h-4" />
+                <span
+                  className="text-[9px] uppercase tracking-widest font-semibold"
+                  style={{
+                    writingMode: "vertical-rl",
+                    transform: "rotate(180deg)",
+                  }}
+                >
+                  Trades
+                </span>
+              </button>
+            ) : (
+              <>
+                {/* Collapse bar */}
+                <div className="h-8 border-b border-terminal-border flex items-center justify-between px-2 flex-shrink-0 bg-terminal-card/50">
+                  <div className="flex items-center gap-1.5">
+                    <History className="w-3 h-3 text-gray-500" />
+                    <span className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">
+                      History
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setLeftPanelCollapsed(true)}
+                    className="p-1 rounded text-gray-500 hover:text-white hover:bg-terminal-hover transition-colors"
+                    title="Collapse"
+                  >
+                    <PanelLeftClose className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Trade History Panel */}
+                <div className="flex-1 min-h-0">
+                  <TradeHistoryPanel
+                    symbol={activeSymbol}
+                    liveLogs={tradeLogs}
+                    onHoverTrade={onHoverTrade}
+                    onLeaveTrade={onLeaveTrade}
+                    onClickTrade={onToggleTradePin}
+                    hoveredTradeId={hoveredTrade?._hoverKey}
+                    pinnedTradeId={pinnedTrade?._hoverKey}
+                  />
+                </div>
+              </>
+            )}
+          </aside>
+        )}
+        {/* Old left sidebar hidden but preserved below */}
+        {false && leftSidebarOpen && (
           <aside className="w-44 flex-shrink-0 border-r border-terminal-border bg-terminal-card/30 overflow-hidden hidden lg:block">
             <div className="p-2.5">
               <h3 className="text-[9px] uppercase tracking-widest text-gray-600 font-semibold mb-2 px-0.5">
@@ -699,18 +768,6 @@ export default function TradingView({
               Measure
             </button>
 
-            <button
-              onClick={() => setFiltersOpen(!filtersOpen)}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                filtersOpen
-                  ? "bg-gold/15 text-gold border border-gold/30"
-                  : "text-gray-500 hover:text-gray-300 hover:bg-terminal-hover"
-              }`}
-            >
-              <SlidersHorizontal className="w-3 h-3" />
-              Filters
-            </button>
-
             {isLoading && (
               <div className="ml-auto flex items-center gap-1.5 text-[11px] text-gray-500">
                 <div className="w-3 h-3 border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
@@ -719,132 +776,33 @@ export default function TradingView({
             )}
           </div>
 
-          {/* Filters Panel */}
-          {filtersOpen && (
-            <div className="border-b border-terminal-border bg-terminal-card/40 backdrop-blur-sm flex-shrink-0">
-              <div className="px-4 py-3">
-                <div className="flex items-center justify-between mb-2.5">
-                  <span className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">
-                    Data Filters
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleResetFilters}
-                      className="flex items-center gap-1 px-2 py-1 rounded text-[10px] text-gray-500 hover:text-gray-300 hover:bg-terminal-hover transition-colors"
-                    >
-                      <RotateCcw className="w-3 h-3" /> Reset
-                    </button>
-                    <button
-                      onClick={() => setFiltersOpen(false)}
-                      className="p-1 rounded hover:bg-terminal-hover text-gray-500 hover:text-gray-300"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
-                  <FilterInput
-                    label="Start"
-                    type="datetime-local"
-                    value={filters.start ? filters.start.slice(0, 16) : ""}
-                    onChange={(v) =>
-                      handleFilterChange(
-                        "start",
-                        v ? new Date(v).toISOString() : "",
-                      )
-                    }
-                  />
-                  <FilterInput
-                    label="End"
-                    type="datetime-local"
-                    value={filters.end ? filters.end.slice(0, 16) : ""}
-                    onChange={(v) =>
-                      handleFilterChange(
-                        "end",
-                        v ? new Date(v).toISOString() : "",
-                      )
-                    }
-                  />
-                  <FilterInput
-                    label="Limit"
-                    type="number"
-                    value={filters.limit}
-                    onChange={(v) => handleFilterChange("limit", v)}
-                  />
-                  <FilterSelect
-                    label="Adjustment"
-                    value={filters.adjustment}
-                    onChange={(v) => handleFilterChange("adjustment", v)}
-                    options={[
-                      ["raw", "Raw"],
-                      ["split", "Split"],
-                      ["dividend", "Dividend"],
-                      ["all", "All"],
-                    ]}
-                  />
-                  <FilterSelect
-                    label="Feed"
-                    value={filters.feed}
-                    onChange={(v) => handleFilterChange("feed", v)}
-                    options={[
-                      ["sip", "SIP"],
-                      ["iex", "IEX"],
-                      ["otc", "OTC"],
-                      ["boats", "BOATS"],
-                    ]}
-                  />
-                  <FilterSelect
-                    label="Sort"
-                    value={filters.sort}
-                    onChange={(v) => handleFilterChange("sort", v)}
-                    options={[
-                      ["asc", "Ascending"],
-                      ["desc", "Descending"],
-                    ]}
-                  />
-                  <FilterSelect
-                    label="Currency"
-                    value={filters.currency}
-                    onChange={(v) => handleFilterChange("currency", v)}
-                    options={[
-                      ["USD", "USD"],
-                      ["EUR", "EUR"],
-                      ["GBP", "GBP"],
-                      ["JPY", "JPY"],
-                      ["CAD", "CAD"],
-                    ]}
-                  />
-                </div>
-
-                <div className="flex items-center gap-3 mt-2.5">
-                  <button
-                    onClick={handleApplyFilters}
-                    className="px-4 py-1.5 rounded-lg bg-gold/20 text-gold border border-gold/30 text-[11px] font-semibold hover:bg-gold/30 transition-colors"
-                  >
-                    Apply Filters
-                  </button>
-                  <span className="text-[10px] text-gray-600">
-                    Leave Start/End empty for auto range
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
+        
 
           {/* ── Content Area ── */}
           {activeTab === "chart" ? (
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="relative flex-1 min-h-0">
                 <div className="absolute inset-0">
+                  {/* Active trade for lines+markers: pinned wins over transient hover */}
                   <Chart
                     data={historicalData}
                     liveBar={liveBar}
                     scalpLevels={activeScalpLevels}
+                    hoveredTrade={pinnedTrade || hoveredTrade}
                     measureMode={measureMode}
                     onMeasureEnd={() => setMeasureMode(false)}
                   />
                 </div>
+                {/* Floating card — shows for pinned (persistent) OR hover (transient) */}
+                {(pinnedTrade || hoveredTrade) && (
+                  <div className="absolute top-2 right-2 z-20">
+                    <TradeHoverCard
+                      trade={pinnedTrade || hoveredTrade}
+                      pinned={!!pinnedTrade}
+                      onClose={pinnedTrade ? onUnpinTrade : undefined}
+                    />
+                  </div>
+                )}
               </div>
               <div className="h-[3px] bg-terminal-border hover:bg-gold/30 cursor-row-resize flex-shrink-0 flex items-center justify-center group">
                 <div className="w-8 h-[2px] rounded-full bg-terminal-accent group-hover:bg-gold/50 transition-colors" />

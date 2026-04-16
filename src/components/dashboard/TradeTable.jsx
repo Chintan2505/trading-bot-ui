@@ -230,9 +230,9 @@ export default function TradeTable({ liveLogs = [] }) {
                         idx === 0 ? 'bg-terminal-card/50' : ''
                       }`}
                     >
-                      <td className="px-3 py-3 font-mono text-xs text-gray-400">
+                      <td className="px-3 py-3 font-mono text-[13px] text-gray-100 font-medium">
                         <div>{ts ? format(new Date(ts), 'dd MMM yyyy') : '--'}</div>
-                        <div className="text-[10px] text-gray-600">{ts ? format(new Date(ts), 'HH:mm:ss') : ''}</div>
+                        <div className="text-[12px] text-gray-300 font-medium">{ts ? format(new Date(ts), 'HH:mm:ss') : ''}</div>
                       </td>
                       <td className="px-3 py-3 font-medium text-white text-xs">
                         {t.symbol || '--'}
