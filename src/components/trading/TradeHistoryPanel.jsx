@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { format } from 'date-fns';
-import { ArrowUpRight, ArrowDownRight, RefreshCw, TrendingUp, TrendingDown, Pin } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, RefreshCw, TrendingUp, TrendingDown, Pin, Loader2 } from 'lucide-react';
 import { getTrades } from '@/services/api';
 
 const fmtPrice = (v) => (typeof v === 'number' ? `$${v.toFixed(2)}` : '—');
@@ -19,6 +19,8 @@ const EXIT_LABELS = {
   BREAK_EVEN: 'BE',
 };
 
+const PAGE_SIZE = 30;
+
 export default function TradeHistoryPanel({
   symbol,
   liveLogs = [],
@@ -29,36 +31,112 @@ export default function TradeHistoryPanel({
   pinnedTradeId,
 }) {
   const [trades, setTrades] = useState([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const listRef = useRef();
+  const sentinelRef = useRef(); // intersection observer target
 
-  const fetchTrades = useCallback(async () => {
-    setLoading(true);
+  // Fetch a specific page — page 1 replaces, page 2+ appends
+  const fetchPage = useCallback(async (pageNum, append = false) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const params = {};
       if (symbol) params.symbol = symbol;
-      const res = await getTrades(1, 100, params);
+      const res = await getTrades(pageNum, PAGE_SIZE, params);
       if (res?.success) {
-        setTrades(res.trades || []);
+        if (append) {
+          setTrades(prev => {
+            // Deduplicate by _id
+            const existingIds = new Set(prev.map(t => t._id));
+            const newTrades = (res.trades || []).filter(t => !existingIds.has(t._id));
+            return [...prev, ...newTrades];
+          });
+        } else {
+          setTrades(res.trades || []);
+        }
+        setTotalPages(res.totalPages || 1);
+        setTotal(res.total || 0);
+        setPage(pageNum);
       }
     } catch (err) {
       console.error('[TradeHistoryPanel] fetch error:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [symbol]);
 
+  // Initial load + reload on symbol change
   useEffect(() => {
-    fetchTrades();
-  }, [fetchTrades]);
+    setTrades([]);
+    setPage(1);
+    fetchPage(1);
+  }, [fetchPage]);
 
-  // Refresh when a new trade comes in via socket
+  // Refresh page 1 when a new trade comes in via socket
   useEffect(() => {
-    if (liveLogs.length > 0) fetchTrades();
+    if (liveLogs.length > 0) {
+      // Prepend-refresh: reload page 1 and merge with existing
+      (async () => {
+        try {
+          const params = {};
+          if (symbol) params.symbol = symbol;
+          const res = await getTrades(1, PAGE_SIZE, params);
+          if (res?.success) {
+            setTrades(prev => {
+              const newTrades = res.trades || [];
+              const existingIds = new Set(newTrades.map(t => t._id));
+              // Keep existing trades from later pages that aren't in page 1
+              const laterPages = prev.filter(t => !existingIds.has(t._id));
+              return [...newTrades, ...laterPages];
+            });
+            setTotal(res.total || 0);
+            setTotalPages(res.totalPages || 1);
+          }
+        } catch { /* ignore */ }
+      })();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveLogs.length]);
 
-  // Merge OPEN live logs with fetched trades (OPEN first)
+  // Full refresh (button)
+  const handleRefresh = useCallback(() => {
+    setTrades([]);
+    setPage(1);
+    fetchPage(1);
+  }, [fetchPage]);
+
+  // Load next page
+  const loadMore = useCallback(() => {
+    if (loadingMore || loading || page >= totalPages) return;
+    fetchPage(page + 1, true);
+  }, [loadingMore, loading, page, totalPages, fetchPage]);
+
+  // Infinite scroll: IntersectionObserver watches the sentinel at the bottom
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { root: listRef.current, rootMargin: '100px', threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore]);
+
+  // Merge OPEN live logs at the top (not yet in DB)
   const allTrades = [...trades];
   liveLogs.forEach(live => {
     if (live.status === 'OPEN' && !allTrades.find(t => t.orderId === live.orderId)) {
@@ -66,15 +144,17 @@ export default function TradeHistoryPanel({
     }
   });
 
+  const hasMore = page < totalPages;
+
   return (
     <div className="h-full flex flex-col bg-terminal-card/30">
       {/* Count + refresh bar */}
       <div className="px-3 py-1.5 border-b border-terminal-border flex items-center justify-between flex-shrink-0">
         <span className="text-[9px] font-mono text-gray-500">
-          {allTrades.length} {allTrades.length === 1 ? 'trade' : 'trades'}
+          {allTrades.length} of {total} {total === 1 ? 'trade' : 'trades'}
         </span>
         <button
-          onClick={fetchTrades}
+          onClick={handleRefresh}
           disabled={loading}
           className="p-1 rounded text-gray-500 hover:text-white hover:bg-terminal-hover transition-colors disabled:opacity-40"
           title="Refresh"
@@ -92,7 +172,11 @@ export default function TradeHistoryPanel({
 
       {/* List */}
       <div ref={listRef} className="flex-1 overflow-y-auto">
-        {allTrades.length === 0 ? (
+        {loading && trades.length === 0 ? (
+          <div className="p-6 flex items-center justify-center">
+            <Loader2 className="w-5 h-5 text-gold animate-spin" />
+          </div>
+        ) : allTrades.length === 0 ? (
           <div className="p-6 text-center">
             <p className="text-xs text-gray-600">No trades yet</p>
             <p className="text-[9px] text-gray-700 mt-1">Start auto-trading to see history</p>
@@ -188,6 +272,20 @@ export default function TradeHistoryPanel({
                 </div>
               );
             })}
+
+            {/* Sentinel for infinite scroll + loading indicator */}
+            <div ref={sentinelRef} className="h-1" />
+            {loadingMore && (
+              <div className="py-3 flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 text-gold animate-spin" />
+                <span className="text-[10px] text-gray-500">Loading more...</span>
+              </div>
+            )}
+            {!hasMore && trades.length > 0 && (
+              <div className="py-3 text-center text-[9px] text-gray-600">
+                All {total} trades loaded
+              </div>
+            )}
           </div>
         )}
       </div>
