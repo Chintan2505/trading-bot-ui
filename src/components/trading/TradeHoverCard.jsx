@@ -35,6 +35,20 @@ export default function TradeHoverCard({ trade, pinned = false, onClose }) {
   const pnl = trade.pnl ?? 0;
   const pnlPositive = pnl >= 0;
   const exitMeta = trade.exitReason ? EXIT_LABELS[trade.exitReason] : null;
+  const signalPrice =
+    trade.signalPriceExec ??
+    trade.signalPriceMid ??
+    trade.entryAsk ??
+    trade.entryMid ??
+    trade.entryPrice;
+  const executedEntry = trade.executedEntryPrice ?? trade.entryPrice;
+  const executedExit = trade.executedExitPrice ?? trade.exitPrice;
+  const entrySlippage =
+    typeof trade.slippageEntry === 'number'
+      ? trade.slippageEntry
+      : typeof signalPrice === 'number' && typeof executedEntry === 'number'
+        ? executedEntry - signalPrice
+        : null;
 
   // ── Collapsed view: thin vertical strip on the right side ──
   if (collapsed && pinned) {
@@ -112,11 +126,6 @@ export default function TradeHoverCard({ trade, pinned = false, onClose }) {
           <span className="text-sm font-bold text-white">{trade.symbol}</span>
         </div>
         <div className="flex items-center gap-1">
-          {/* {pinned && (
-            <span title="Pinned — click trade again to unpin" className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gold/20 text-gold flex items-center gap-0.5">
-              <Pin className="w-2.5 h-2.5" /> PINNED
-            </span>
-          )} */}
           {!isClosed ? (
             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400">OPEN</span>
           ) : (
@@ -166,11 +175,24 @@ export default function TradeHoverCard({ trade, pinned = false, onClose }) {
       <div className="p-3 space-y-2 text-[11px]">
         {/* Entry */}
         <div className="flex items-center justify-between">
+          <span className="text-gray-500 flex items-center gap-1">Signal
+          </span>
+          <span className="text-white font-semibold">{fmtPrice(signalPrice)}</span>
+        </div>
+        <div className="flex items-center justify-between">
           <span className="text-gray-500 flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-gold inline-block" /> Entry
           </span>
-          <span className="text-white font-semibold">{fmtPrice(trade.entryPrice)}</span>
+          <span className="text-white font-semibold">{fmtPrice(executedEntry)}</span>
         </div>
+        {typeof entrySlippage === 'number' && (
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="text-gray-500">Entry Slippage</span>
+            <span className={entrySlippage >= 0 ? 'text-bear/80' : 'text-bull/80'}>
+              {entrySlippage >= 0 ? '+' : ''}{entrySlippage.toFixed(4)}
+            </span>
+          </div>
+        )}
 
         {/* Partial exit (if applicable) */}
         {trade.partialTaken && (
@@ -197,7 +219,7 @@ export default function TradeHoverCard({ trade, pinned = false, onClose }) {
               <span className={`w-2 h-2 rounded-full ${pnlPositive ? 'bg-bull' : 'bg-bear'} inline-block`} /> Exit
             </span>
             <div className="flex items-center gap-2">
-              <span className="text-white font-semibold">{fmtPrice(trade.exitPrice)}</span>
+                <span className="text-white font-semibold">{fmtPrice(executedExit)}</span>
               {trade.partialTaken && typeof remainingPnl === 'number' && (
                 <span className={`text-[10px] ${remainingPnl >= 0 ? 'text-bull' : 'text-bear'}`}>
                   ({fmtPnl(remainingPnl)})
@@ -259,13 +281,6 @@ export default function TradeHoverCard({ trade, pinned = false, onClose }) {
             </>
           )}
         </div>
-
-        {/* Reason */}
-        {/* {trade.reason && (
-          <div className="pt-1 border-t border-terminal-border">
-            <p className="text-[9px] text-gray-500 italic leading-tight">"{trade.reason}"</p>
-          </div>
-        )} */}
 
         {/* Hint */}
         {!pinned && (

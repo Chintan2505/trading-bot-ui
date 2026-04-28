@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
-import { ArrowUpRight, ArrowDownRight, Minus, ChevronLeft, ChevronRight, Filter, X } from 'lucide-react';
-import { getTrades } from '@/services/api';
+import { ArrowUpRight, ArrowDownRight, Minus, ChevronLeft, ChevronRight, Filter, X, ShieldCheck, ShieldAlert, Loader2 } from 'lucide-react';
+import { getTrades, verifyTrade } from '@/services/api';
 
 const formatPrice = (v) => (typeof v === 'number' ? `$${v.toFixed(2)}` : '--');
 const formatPnl = (v) => {
@@ -10,6 +10,8 @@ const formatPnl = (v) => {
   return `${sign}$${v.toFixed(2)}`;
 };
 const formatPnlPct = (v) => (typeof v === 'number' ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '');
+const formatSignedPrice = (v) =>
+  typeof v === 'number' ? `${v >= 0 ? '+' : ''}$${v.toFixed(4)}` : '--';
 
 const STATUS_STYLES = {
   OPEN: 'bg-blue-500/10 text-blue-400',
@@ -50,7 +52,28 @@ export default function TradeTable({ liveLogs = [] }) {
     startDate: '',
     endDate: '',
   });
+  const [verifyState, setVerifyState] = useState({});
+  const [verifyDetails, setVerifyDetails] = useState({});
+  const [modalTradeId, setModalTradeId] = useState(null); // opens details modal
   const LIMIT = 20;
+
+  const handleVerify = useCallback(async (tradeId) => {
+    setVerifyState((prev) => ({ ...prev, [tradeId]: 'loading' }));
+    setModalTradeId(tradeId);
+    try {
+      const res = await verifyTrade(tradeId);
+      if (!res.success) {
+        setVerifyState((prev) => ({ ...prev, [tradeId]: 'error' }));
+        setVerifyDetails((prev) => ({ ...prev, [tradeId]: { error: res.error } }));
+        return;
+      }
+      setVerifyDetails((prev) => ({ ...prev, [tradeId]: res }));
+      setVerifyState((prev) => ({ ...prev, [tradeId]: res.verified ? 'match' : 'mismatch' }));
+    } catch (err) {
+      setVerifyState((prev) => ({ ...prev, [tradeId]: 'error' }));
+      setVerifyDetails((prev) => ({ ...prev, [tradeId]: { error: err.message } }));
+    }
+  }, []);
 
   const fetchTrades = useCallback(async (p = 1) => {
     setLoading(true);
@@ -205,10 +228,13 @@ export default function TradeTable({ liveLogs = [] }) {
                   <th className="text-left px-3 py-2.5 font-semibold">Symbol</th>
                   <th className="text-left px-3 py-2.5 font-semibold">Side</th>
                   <th className="text-center px-3 py-2.5 font-semibold">Source</th>
-                  <th className="text-right px-3 py-2.5 font-semibold">Entry</th>
-                  <th className="text-right px-3 py-2.5 font-semibold">Exit</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Signal (Mid)</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Executed</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Slippage</th>
+                  <th className="text-right px-3 py-2.5 font-semibold">Fees</th>
                   <th className="text-right px-3 py-2.5 font-semibold">P&amp;L</th>
                   <th className="text-center px-3 py-2.5 font-semibold">Status</th>
+                  <th className="text-center px-3 py-2.5 font-semibold">Verify</th>
                   <th className="text-right px-3 py-2.5 font-semibold">Order ID</th>
                 </tr>
               </thead>
@@ -222,6 +248,26 @@ export default function TradeTable({ liveLogs = [] }) {
                   const pnlPositive = pnl >= 0;
                   const exitTag = t.exitReason ? EXIT_REASON_LABEL[t.exitReason] : null;
                   const ts = t.createdAt || t.timestamp;
+                  const signalPrice =
+                    t.signalPriceExec ??
+                    t.signalPriceMid ??
+                    t.entryAsk ??
+                    t.entryMid ??
+                    t.entryPrice;
+                  const executedEntry = t.executedEntryPrice ?? t.entryPrice;
+                  const executedExit = t.executedExitPrice ?? t.exitPrice;
+                  const entrySlippage =
+                    typeof t.slippageEntry === 'number'
+                      ? t.slippageEntry
+                      : typeof signalPrice === 'number' && typeof executedEntry === 'number'
+                        ? executedEntry - signalPrice
+                        : null;
+                  const exitSlippage =
+                    typeof t.slippageExit === 'number'
+                      ? t.slippageExit
+                      : typeof signalPrice === 'number' && typeof executedExit === 'number'
+                        ? executedExit - signalPrice
+                        : null;
 
                   return (
                     <tr
@@ -251,10 +297,41 @@ export default function TradeTable({ liveLogs = [] }) {
                         </span>
                       </td>
                       <td className="px-3 py-3 text-right font-mono text-xs text-gray-300">
-                        {formatPrice(t.entryPrice)}
+                        {formatPrice(signalPrice)}
                       </td>
                       <td className="px-3 py-3 text-right font-mono text-xs text-gray-300">
-                        {isClosed ? formatPrice(t.exitPrice) : <span className="text-gray-600">--</span>}
+                        <div className="flex flex-col items-end">
+                          <span>{formatPrice(executedEntry)}</span>
+                          {isClosed ? (
+                            <span className="text-[10px] text-gray-500">{formatPrice(executedExit)}</span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono text-xs">
+                        <div className="flex flex-col items-end">
+                          <span className={typeof entrySlippage === 'number' ? (entrySlippage >= 0 ? 'text-bear' : 'text-bull') : 'text-gray-600'}>
+                            {formatSignedPrice(entrySlippage)}
+                          </span>
+                          {isClosed ? (
+                            <span className={typeof exitSlippage === 'number' ? `text-[10px] ${exitSlippage >= 0 ? 'text-bear/70' : 'text-bull/70'}` : 'text-[10px] text-gray-600'}>
+                              {formatSignedPrice(exitSlippage)}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono text-xs">
+                        {isClosed && typeof t.fees === 'number' && t.fees > 0 ? (
+                          <div className="flex flex-col items-end" title="Total Alpaca fees (entry + exit)">
+                            <span className="text-bear/80">−${t.fees.toFixed(2)}</span>
+                            {typeof t.entryPrice === 'number' && typeof t.qty === 'number' && t.entryPrice > 0 && (
+                              <span className="text-[9px] text-gray-500">
+                                {((t.fees / (t.entryPrice * t.qty)) * 100).toFixed(3)}%
+                              </span>
+                            )}
+                          </div>  
+                        ) : (
+                          <span className="text-gray-600">{isClosed ? '$0.00' : '--'}</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-right font-mono text-xs">
                         {isClosed ? (
@@ -287,6 +364,67 @@ export default function TradeTable({ liveLogs = [] }) {
                             <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-yellow-500/10 text-yellow-400">PARTIAL TP</span>
                           )}
                         </div>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        {(() => {
+                          const tid = t._id;
+                          if (!tid || !t.orderId) {
+                            return <span className="text-gray-700 text-[9px]">—</span>;
+                          }
+                          const state = verifyState[tid] || 'idle';
+                          const details = verifyDetails[tid];
+                          if (state === 'loading') {
+                            return <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400 mx-auto" />;
+                          }
+                          if (state === 'match') {
+                            return (
+                              <button
+                                onClick={() => handleVerify(tid)}
+                                title={`Match: entry $${details?.alpaca?.filledAvgPrice?.toFixed?.(2) ?? '?'}, qty ${details?.alpaca?.filledQty ?? '?'}, fees $${details?.alpaca?.fees ?? 0}`}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-bull/15 hover:bg-bull/25 transition-colors"
+                              >
+                                <ShieldCheck className="w-3 h-3 text-bull" />
+                                <span className="text-[9px] text-bull font-semibold">OK</span>
+                              </button>
+                            );
+                          }
+                          if (state === 'mismatch') {
+                            const mismatches = details?.mismatches || [];
+                            const tip = mismatches
+                              .map((m) => `${m.field}: db=${m.db}, alpaca=${m.alpaca} (Δ ${m.diff})`)
+                              .join(' | ');
+                            return (
+                              <button
+                                onClick={() => handleVerify(tid)}
+                                title={tip}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-bear/15 hover:bg-bear/25 transition-colors"
+                              >
+                                <ShieldAlert className="w-3 h-3 text-bear" />
+                                <span className="text-[9px] text-bear font-semibold">{mismatches.length}</span>
+                              </button>
+                            );
+                          }
+                          if (state === 'error') {
+                            return (
+                              <button
+                                onClick={() => handleVerify(tid)}
+                                title={details?.error || 'Verify failed'}
+                                className="text-[9px] text-yellow-500 hover:text-yellow-400"
+                              >
+                                retry
+                              </button>
+                            );
+                          }
+                          return (
+                            <button
+                              onClick={() => handleVerify(tid)}
+                              title="Verify against Alpaca"
+                              className="px-1.5 py-0.5 rounded text-[9px] text-gray-400 hover:text-white hover:bg-terminal-hover transition-colors border border-terminal-border"
+                            >
+                              verify
+                            </button>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-3 text-right">
                         <span className="font-mono text-[10px] text-gray-600 bg-terminal-bg px-1.5 py-0.5 rounded">
@@ -350,6 +488,234 @@ export default function TradeTable({ liveLogs = [] }) {
           <div className="w-5 h-5 border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
         </div>
       )}
+
+      {/* ── Verify details modal ── */}
+      {modalTradeId && (
+        <VerifyModal
+          tradeId={modalTradeId}
+          state={verifyState[modalTradeId]}
+          details={verifyDetails[modalTradeId]}
+          onClose={() => setModalTradeId(null)}
+          onRetry={() => handleVerify(modalTradeId)}
+        />
+      )}
     </div>
+  );
+}
+
+// ── Verify details drawer: slides down from top, click-outside closes ──
+function VerifyModal({ tradeId, state, details, onClose, onRetry }) {
+  // Mount animation: false on first render, flip to true on next tick
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setOpen(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+  // Esc to close
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') handleClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleClose = () => {
+    setOpen(false);
+    setTimeout(onClose, 250); // match transition duration
+  };
+
+  const stop = (e) => e.stopPropagation();
+  const fmt = (v) => (typeof v === 'number' ? `$${v.toFixed(2)}` : '—');
+  const fmtQty = (v) =>
+    typeof v === 'number' ? v.toFixed(6).replace(/\.?0+$/, '') : '—';
+  const fmtTs = (v) => (v ? format(new Date(v), 'MMM dd HH:mm:ss') : '—');
+
+  return (
+    <div
+      onClick={handleClose}
+      className={`fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity duration-250 ${open ? 'opacity-100' : 'opacity-0'}`}
+    >
+      <div
+        onClick={stop}
+        className={`absolute top-0 left-0 right-0 bg-terminal-card border-b border-terminal-border shadow-2xl max-h-[85vh] overflow-y-auto transform transition-transform duration-250 ease-out ${open ? 'translate-y-0' : '-translate-y-full'}`}
+      >
+        {/* Header */}
+        <div className="px-6 py-3 border-b border-terminal-border flex items-center justify-between sticky top-0 bg-terminal-card z-10">
+          <div className="flex items-center gap-3">
+            <span className="text-base font-semibold text-white">Trade Verification</span>
+            {state === 'match' && (
+              <span className="px-2 py-0.5 rounded text-[12px] font-bold bg-bull/15 text-bull flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" /> MATCH
+              </span>
+            )}
+            {state === 'mismatch' && (
+              <span className="px-2 py-0.5 rounded text-[12px] font-bold bg-bear/15 text-bear flex items-center gap-1">
+                <ShieldAlert className="w-3.5 h-3.5" /> {details?.mismatches?.length ?? '?'} MISMATCH
+              </span>
+            )}
+            {state === 'loading' && (
+              <span className="flex items-center gap-1 text-[12px] text-gray-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Fetching Alpaca data…
+              </span>
+            )}
+            {state === 'error' && (
+              <span className="text-[12px] text-yellow-500">Error — check logs</span>
+            )}
+          </div>
+          <button
+            onClick={handleClose}
+            className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-terminal-hover"
+            title="Close (Esc)"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        {state === 'loading' && (
+          <div className="p-10 flex items-center justify-center">
+            <Loader2 className="w-7 h-7 animate-spin text-gold" />
+          </div>
+        )}
+        {state === 'error' && (
+          <div className="p-6">
+            <p className="text-[14px] text-bear">{details?.error || 'Failed to verify'}</p>
+            <button
+              onClick={onRetry}
+              className="mt-3 px-3 py-1.5 rounded bg-terminal-bg border border-terminal-border text-[13px] text-gray-300 hover:text-white"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {(state === 'match' || state === 'mismatch') && details?.trade && details?.alpaca && (
+          <div className="p-6 space-y-5 max-w-5xl mx-auto">
+            {/* Side-by-side comparison */}
+            <div className="grid grid-cols-3 gap-4 text-[13px] font-mono">
+              <div className="text-[12px] uppercase text-gray-500 font-semibold">Field</div>
+              <div className="text-[12px] uppercase text-gray-500 font-semibold">DB (TradeX)</div>
+              <div className="text-[12px] uppercase text-gray-500 font-semibold">Alpaca</div>
+
+              <ComparisonRow label="Side" dbVal={details.trade.decision} alpacaVal={details.trade.decision} />
+              <ComparisonRow label="Symbol" dbVal={details.trade.symbol} alpacaVal={details.trade.symbol} />
+              <ComparisonRow
+                label="Entry Price"
+                dbVal={fmt(details.trade.entryPrice)}
+                alpacaVal={fmt(details.alpaca.entryPrice)}
+                mismatch={details.mismatches?.some((m) => m.field === 'entryPrice')}
+                delta={details.mismatches?.find((m) => m.field === 'entryPrice')?.diff}
+              />
+              <ComparisonRow
+                label="Exit Price"
+                dbVal={fmt(details.trade.exitPrice)}
+                alpacaVal={fmt(details.alpaca.exitPrice)}
+                mismatch={details.mismatches?.some((m) => m.field === 'exitPrice')}
+                delta={details.mismatches?.find((m) => m.field === 'exitPrice')?.diff}
+              />
+              <ComparisonRow
+                label="Quantity"
+                dbVal={fmtQty(details.trade.qty)}
+                alpacaVal={fmtQty(details.alpaca.entryQty)}
+                mismatch={details.mismatches?.some((m) => m.field === 'qty')}
+                delta={details.mismatches?.find((m) => m.field === 'qty')?.diff}
+              />
+              <ComparisonRow
+                label="Fees (total)"
+                dbVal={fmt(details.trade.fees)}
+                alpacaVal={fmt(details.alpaca.fees)}
+                mismatch={details.mismatches?.some((m) => m.field === 'fees')}
+                delta={details.mismatches?.find((m) => m.field === 'fees')?.diff}
+              />
+              <ComparisonRow
+                label="Gross P&L"
+                dbVal={fmt(details.trade.pnl)}
+                alpacaVal={fmt(details.alpaca.pnl)}
+                mismatch={details.mismatches?.some((m) => m.field === 'pnl')}
+                delta={details.mismatches?.find((m) => m.field === 'pnl')?.diff}
+              />
+              <ComparisonRow
+                label="Net P&L"
+                dbVal={fmt(details.trade.netPnl)}
+                alpacaVal={fmt(details.alpaca.netPnl)}
+              />
+            </div>
+
+            {/* Timing — DB vs Alpaca side-by-side */}
+            <div className="pt-3 border-t border-terminal-border">
+              <div className="grid grid-cols-3 gap-3 text-[13px] font-mono">
+                <div className="text-[12px] uppercase text-gray-500 font-semibold">Time</div>
+                <div className="text-[12px] uppercase text-gray-500 font-semibold">DB (TradeX)</div>
+                <div className="text-[12px] uppercase text-gray-500 font-semibold">Alpaca</div>
+
+                <div className="text-gray-500">Entry</div>
+                <div className="text-gray-200">{fmtTs(details.trade.createdAt)}</div>
+                <div className="text-gray-200">
+                  {fmtTs(details.alpaca.entryFilledAt) || fmtTs(details.alpaca.entrySubmittedAt)}
+                </div>
+
+                <div className="text-gray-500">Exit</div>
+                <div className="text-gray-200">{fmtTs(details.trade.closedAt)}</div>
+                <div className="text-gray-200">{fmtTs(details.alpaca.exitFilledAt)}</div>
+
+                <div className="text-gray-500">Order ID</div>
+                <div className="text-gray-200">
+                  entry: {details.alpaca.entryOrderId?.slice(0, 8) || '—'}
+                </div>
+                <div className="text-gray-200">
+                  exit: {details.alpaca.exitOrderId?.slice(0, 8) || '—'}
+                </div>
+              </div>
+            </div>
+
+            {/* Mismatches */}
+            {details.mismatches?.length > 0 && (
+              <div className="pt-3 border-t border-terminal-border">
+                <div className="text-[12px] uppercase text-bear font-semibold mb-2">
+                  {details.mismatches.length} Mismatch{details.mismatches.length > 1 ? 'es' : ''}
+                </div>
+                <div className="space-y-1">
+                  {details.mismatches.map((m, i) => (
+                    <div key={i} className="text-[13px] font-mono text-gray-300 px-3 py-1.5 rounded bg-bear/5 border border-bear/20">
+                      <span className="text-bear font-bold">{m.field}</span>
+                      {' '}— DB: <span className="text-white">{m.db}</span>
+                      {' '}→ Alpaca: <span className="text-white">{m.alpaca}</span>
+                      {' '}<span className={m.diff >= 0 ? 'text-bull' : 'text-bear'}>
+                        (Δ {m.diff >= 0 ? '+' : ''}{m.diff})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-3 flex justify-end">
+              <button
+                onClick={onRetry}
+                className="px-3 py-1.5 rounded bg-terminal-bg border border-terminal-border text-[13px] text-gray-300 hover:text-white"
+              >
+                Re-verify
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ComparisonRow({ label, dbVal, alpacaVal, mismatch, delta }) {
+  return (
+    <>
+      <div className="text-gray-500">{label}</div>
+      <div className={mismatch ? 'text-bear' : 'text-gray-200'}>{dbVal}</div>
+      <div className={mismatch ? 'text-bear' : 'text-gray-200'}>
+        {alpacaVal}
+        {mismatch && typeof delta === 'number' && (
+          <span className="text-[11px] text-bear/70 ml-1">(Δ {delta >= 0 ? '+' : ''}{delta})</span>
+        )}
+      </div>
+    </>
   );
 }

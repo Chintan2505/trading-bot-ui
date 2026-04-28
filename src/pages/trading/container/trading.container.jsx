@@ -10,6 +10,7 @@ import {
   getScalpingSettings,
   manualClosePosition,
   manualTestBuy,
+  updatePositionLevels,
 } from "@/services/socket";
 import { toast } from "sonner";
 import TradingView from "../view/trading.view";
@@ -32,6 +33,7 @@ const PERIODS = [
   { label: "1Y", timeframe: "1Day", days: 365, buffer: 2 },
 ];
 const WATCHLIST = [
+  "BTC/USD",
   "AAPL",
   "TSLA",
   "GOOGL",
@@ -39,28 +41,23 @@ const WATCHLIST = [
   "AMZN",
   "NVDA",
   "META",
-  "BTC/USD",
-  "ETH/USD",
-  "LTC/USD",
 ];
 
-// Crypto symbols contain a slash (e.g. "BTC/USD"). Crypto trades 24/7 — no market hours filtering.
-const isCrypto = (symbol) => typeof symbol === "string" && symbol.includes("/");
-
 // US regular market: 9:30 AM – 4:00 PM ET = 13:30 – 20:00 UTC = 19:00 – 01:30 IST
-function getPeriodDates(period, symbol) {
+const isCryptoSymbol = (sym) => typeof sym === "string" && sym.includes("/");
+
+function getPeriodDates(period, sym) {
   const now = new Date();
   const start = new Date(
     now.getTime() - (period.days + period.buffer) * 86400000,
   ).toISOString();
 
-  // Crypto: no market-hours logic, just go back N days from now
-  if (isCrypto(symbol)) {
-    return { start, end: "" };
-  }
-
   let end = "";
-  if (period.timeframe.includes("Min") || period.timeframe === "1Hour") {
+  // Crypto trades 24/7 — no pre-market clip.
+  if (
+    !isCryptoSymbol(sym) &&
+    (period.timeframe.includes("Min") || period.timeframe === "1Hour")
+  ) {
     const utcH = now.getUTCHours();
     const utcM = now.getUTCMinutes();
     const beforeMarketOpen = utcH < 13 || (utcH === 13 && utcM < 30);
@@ -74,11 +71,10 @@ function getPeriodDates(period, symbol) {
   return { start, end };
 }
 
-// Filter bars to regular trading hours only (9:30 AM – 4:00 PM ET = 13:30 – 20:00 UTC)
-// Pre/post market has sparse data with gaps, regular hours have 1 bar per minute
-// Crypto is 24/7 → never filter
-function filterRegularHours(bars, symbol) {
-  if (isCrypto(symbol)) return bars;
+// Filter bars to US regular trading hours (skip pre/post market).
+// Crypto trades 24/7 — no filter.
+function filterRegularHours(bars, sym) {
+  if (isCryptoSymbol(sym)) return bars;
   return bars.filter((b) => {
     const d = new Date(b.time * 1000);
     const totalMin = d.getUTCHours() * 60 + d.getUTCMinutes();
@@ -126,6 +122,7 @@ export default function TradingContainer() {
   const [liveBar, setLiveBar] = useState(null);
   const [prevBar, setPrevBar] = useState(null);
   const [livePrice, setLivePrice] = useState(null); // ticks on every trade (sub-second updates)
+  const [liveQuote, setLiveQuote] = useState(null); // { bid, ask, mid, spread, time }
   const [isLoading, setIsLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(
     socket.connected ? "connected" : "disconnected",
@@ -156,7 +153,7 @@ export default function TradingContainer() {
   const [scalpSettings, setScalpSettings] = useState({
     takeProfitPct: "0.5",
     stopLossPct: "0.3",
-    qty: "0.001",
+    qty: "1",
     cooldownMs: "3000",
     trailingStopEnabled: true,
     autoSlTp: false,
@@ -188,13 +185,15 @@ export default function TradingContainer() {
   }, [activeSymbol]);
 
   // ── Derived values ──
-  // Prefer livePrice (sub-second trade ticks) > liveBar.close (per-minute) > last historical close
+  // Last Trade is the same source the chart line uses → no visual mismatch.
+  // Falls back to in-progress bar close (also Last Trade), then historical close.
   const currentPrice =
     livePrice?.price ??
     liveBar?.close ??
     historicalData[historicalData.length - 1]?.close ??
     0;
   const prevPrice =
+    liveBar?.close ??
     prevBar?.close ??
     historicalData[historicalData.length - 1]?.close ??
     currentPrice;
@@ -210,6 +209,7 @@ export default function TradingContainer() {
       setLiveBar(null);
       setPrevBar(null);
       setLivePrice(null);
+      setLiveQuote(null);
       setHistoricalData([]);
       try {
         const opts = {
@@ -292,13 +292,15 @@ export default function TradingContainer() {
     };
     const onDisconnect = () => setConnectionStatus("disconnected");
     const onBarUpdate = (bar) => {
-      // Reject bars that belong to a different symbol than the one currently active
       if (
         bar.symbol &&
         activeSymbolRef.current &&
         bar.symbol !== activeSymbolRef.current
-      )
+      ) {
+        console.log(`⚠ [Chart] bar_update DROPPED — sym mismatch (${bar.symbol} vs active ${activeSymbolRef.current})`);
         return;
+      }
+      console.log(`🕯 [Chart] bar APPLIED → C:$${bar.close?.toFixed?.(2)} (drives candle render)`);
       setPrevBar((prev) => prev || bar);
       setLiveBar((current) => {
         setPrevBar(current);
@@ -306,15 +308,42 @@ export default function TradingContainer() {
       });
     };
     const onPriceUpdate = (data) => {
-      // High-frequency trade ticks (sub-second updates for the price ticker)
+      if (
+        data.symbol &&
+        activeSymbolRef.current &&
+        data.symbol !== activeSymbolRef.current
+      ) {
+        console.log(`⚠ [Chart] price_update DROPPED — sym mismatch (${data.symbol} vs active ${activeSymbolRef.current})`);
+        return;
+      }
+      if (typeof data.price === "number") {
+        console.log(`💲 [Chart] price APPLIED → $${data.price.toFixed(2)} (drives ticker + chart line)`);
+        setLivePrice({ price: data.price, time: data.time });
+      }
+    };
+
+    const onQuoteUpdate = (data) => {
+      // Bid/Ask quote — used for spread display + execution-side reference.
       if (
         data.symbol &&
         activeSymbolRef.current &&
         data.symbol !== activeSymbolRef.current
       )
         return;
-      if (typeof data.price === "number") {
-        setLivePrice({ price: data.price, time: data.time });
+      if (
+        typeof data.bid === "number" &&
+        typeof data.ask === "number"
+      ) {
+        const mid =
+          typeof data.mid === "number" ? data.mid : (data.bid + data.ask) / 2;
+        setLiveQuote({
+          bid: data.bid,
+          ask: data.ask,
+          mid,
+          spread:
+            typeof data.spread === "number" ? data.spread : data.ask - data.bid,
+          time: data.time,
+        });
       }
     };
 
@@ -322,7 +351,6 @@ export default function TradingContainer() {
     const onStrategyUpdate = () => {};
 
     const onTradeExecuted = (trade) => {
-      console.log("🚀 ~ onTradeExecuted ~ trade:", trade);
       const now = Date.now();
       const tradeId = trade.orderId || now.toString();
 
@@ -340,6 +368,10 @@ export default function TradingContainer() {
             strategy: trade.strategy,
             executedBy: trade.executedBy,
             entryPrice: trade.entryPrice,
+            executedEntryPrice: trade.executedEntryPrice ?? trade.entryPrice,
+            signalPriceMid: trade.signalPriceMid,
+            signalPriceExec: trade.signalPriceExec,
+            slippageEntry: trade.slippageEntry,
             takeProfitPrice: trade.takeProfitPrice,
             stopLossPrice: trade.stopLossPrice,
             qty: trade.qty,
@@ -351,8 +383,23 @@ export default function TradingContainer() {
 
       // Set active SL/TP levels for chart price lines + immediately mark position open
       if (trade.strategy === "scalping" && trade.entryPrice) {
+        console.log(
+          `📍 [Chart] SETTING price lines → entry:$${trade.entryPrice?.toFixed?.(2)} TP:$${trade.takeProfitPrice?.toFixed?.(2)} SL:$${trade.stopLossPrice?.toFixed?.(2)} | currentPrice:$${currentPrice?.toFixed?.(2)} | livePrice:$${livePrice?.price?.toFixed?.(2) ?? '-'} | liveBar.close:$${liveBar?.close?.toFixed?.(2) ?? '-'}`,
+        );
+        const gap = trade.entryPrice - (currentPrice || 0);
+        if (Math.abs(gap) > 0.10) {
+          console.warn(
+            `⚠ [Chart] ENTRY/CHART GAP $${gap.toFixed(2)} — entry line may render off candle until next 📡 IEX tick or 🎯 fill snap`,
+          );
+        }
         setActiveScalpLevels({
           entry: trade.entryPrice,
+          signal:
+            trade.signalPriceExec ??
+            trade.signalPriceMid ??
+            trade.entryAsk ??
+            trade.entryMid ??
+            trade.entryPrice,
           tp: trade.takeProfitPrice,
           sl: trade.stopLossPrice,
           side: trade.decision,
@@ -374,6 +421,10 @@ export default function TradingContainer() {
             orderId: trade.orderId,
             strategy: trade.strategy,
             entryPrice: trade.entryPrice,
+            executedEntryPrice: trade.executedEntryPrice ?? trade.entryPrice,
+            signalPriceMid: trade.signalPriceMid,
+            signalPriceExec: trade.signalPriceExec,
+            slippageEntry: trade.slippageEntry,
             takeProfitPrice: trade.takeProfitPrice,
             stopLossPrice: trade.stopLossPrice,
             timestamp: trade.timestamp || now,
@@ -400,7 +451,7 @@ export default function TradingContainer() {
       setScalpSettings({
         takeProfitPct: ((data.takeProfitPct ?? 0.005) * 100).toString(),
         stopLossPct: ((data.stopLossPct ?? 0.003) * 100).toString(),
-        qty: (data.qty ?? 0.001).toString(),
+        qty: (data.qty ?? 1).toString(),
         cooldownMs: (data.cooldownMs ?? 3000).toString(),
         trailingStopEnabled: data.trailingStopEnabled !== false,
         partialTpEnabled: data.partialTpEnabled === true,
@@ -417,7 +468,6 @@ export default function TradingContainer() {
     };
 
     const onPositionClosed = (data) => {
-      console.log("🚀 ~ onPositionClosed ~ data:", data);
       setScalpPositionState({ isOpen: false, pendingOrder: false });
       setActiveScalpLevels(null);
 
@@ -429,6 +479,12 @@ export default function TradingContainer() {
                 ...log,
                 status: "CLOSED",
                 exitPrice: data.exitPrice,
+                executedExitPrice: data.executedExitPrice ?? data.exitPrice,
+                slippageExit: data.slippageExit,
+                exitBid: data.exitBid,
+                exitAsk: data.exitAsk,
+                exitMid: data.exitMid,
+                spreadAtExit: data.spreadAtExit,
                 pnl: data.pnl,
                 pnlPct: data.pnlPct,
                 exitReason: data.result,
@@ -449,6 +505,8 @@ export default function TradingContainer() {
             orderId: data.orderId,
             entryPrice: data.entryPrice,
             exitPrice: data.exitPrice,
+            executedExitPrice: data.executedExitPrice ?? data.exitPrice,
+            slippageExit: data.slippageExit,
             pnl: data.pnl,
             pnlPct: data.pnlPct,
             exitReason: data.result,
@@ -496,7 +554,7 @@ export default function TradingContainer() {
             stopLossPct: (
               (state.scalpSettings.stopLossPct ?? 0.003) * 100
             ).toString(),
-            qty: (state.scalpSettings.qty ?? 0.001).toString(),
+            qty: (state.scalpSettings.qty ?? 1).toString(),
             cooldownMs: (state.scalpSettings.cooldownMs ?? 3000).toString(),
             trailingStopEnabled:
               state.scalpSettings.trailingStopEnabled !== false,
@@ -568,10 +626,30 @@ export default function TradingContainer() {
       }
     };
 
+    const onLevelsUpdated = (data) => {
+      if (data.symbol && data.symbol !== activeSymbolRef.current) return;
+      setActiveScalpLevels((prev) => prev ? {
+        ...prev,
+        tp: data.takeProfitPrice,
+        sl: data.stopLossPrice,
+      } : prev);
+      setScalpPositionState((prev) => prev.isOpen ? {
+        ...prev,
+        takeProfitPrice: data.takeProfitPrice,
+        stopLossPrice: data.stopLossPrice,
+      } : prev);
+      toast.success("✅ TP/SL updated", {
+        description: `TP $${data.takeProfitPrice?.toFixed(2)} | SL $${data.stopLossPrice?.toFixed(2)}`,
+      });
+    };
+
+    socket.on("position_levels_updated", onLevelsUpdated);
+
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("bar_update", onBarUpdate);
     socket.on("price_update", onPriceUpdate);
+    socket.on("quote_update", onQuoteUpdate);
     socket.on("strategy_update", onStrategyUpdate);
     socket.on("trade_executed", onTradeExecuted);
     socket.on("scalping_settings_updated", onScalpingSettings);
@@ -603,6 +681,7 @@ export default function TradingContainer() {
       socket.off("disconnect", onDisconnect);
       socket.off("bar_update", onBarUpdate);
       socket.off("price_update", onPriceUpdate);
+      socket.off("quote_update", onQuoteUpdate);
       socket.off("strategy_update", onStrategyUpdate);
       socket.off("trade_executed", onTradeExecuted);
       socket.off("scalping_settings_updated", onScalpingSettings);
@@ -614,6 +693,7 @@ export default function TradingContainer() {
       socket.off("trade_error", onTradeError);
       socket.off("position_updated", onPositionUpdated);
       socket.off("gemini_update", onGeminiUpdate);
+      socket.off("position_levels_updated", onLevelsUpdated);
     };
   }, []);
 
@@ -622,7 +702,6 @@ export default function TradingContainer() {
     e.preventDefault();
     if (symbol.trim()) {
       const sym = symbol.toUpperCase();
-      console.log("🚀 ~ handleSymbolSubmit ~ sym:", sym);
       const period =
         PERIODS.find((p) => p.label === activePeriod) || PERIODS[0];
       const { start, end } = getPeriodDates(period, sym);
@@ -634,7 +713,6 @@ export default function TradingContainer() {
   };
 
   const handleWatchlistClick = (sym) => {
-    console.log("🚀 ~ handleWatchlistClick ~ sym:", sym);
     setSymbol(sym);
     const period = PERIODS.find((p) => p.label === activePeriod) || PERIODS[0];
     const { start, end } = getPeriodDates(period, sym);
@@ -720,6 +798,15 @@ export default function TradingContainer() {
     toast.info(`Test BUY @ $${currentPrice.toFixed(2)} — placing order...`);
   };
 
+  // Drag-edit TP/SL on chart (TradingView-style). Only fires for open position.
+  const onLevelsChange = useCallback(({ tp, sl }) => {
+    if (!scalpPositionState.isOpen) return;
+    // Optimistic update — server will broadcast confirmed values via 'position_levels_updated'
+    setActiveScalpLevels((prev) => prev ? { ...prev, tp, sl } : prev);
+    updatePositionLevels(tp, sl);
+    toast.info(`Updating SL/TP → TP $${tp.toFixed(2)} | SL $${sl.toFixed(2)}`);
+  }, [scalpPositionState.isOpen]);
+
   const handlePeriodSelect = (period) => {
     const { start, end } = getPeriodDates(period, activeSymbol);
     setTimeframe(period.timeframe);
@@ -781,6 +868,7 @@ export default function TradingContainer() {
       botActivities={botActivities}
       // Derived
       currentPrice={currentPrice}
+      liveQuote={liveQuote}
       priceChange={priceChange}
       priceChangePct={priceChangePct}
       isUp={isUp}
@@ -798,6 +886,7 @@ export default function TradingContainer() {
       scalpSettings={scalpSettings}
       scalpPositionState={scalpPositionState}
       activeScalpLevels={activeScalpLevels}
+      onLevelsChange={onLevelsChange}
       tradeStats={tradeStats}
       hoveredTrade={hoveredTrade}
       pinnedTrade={pinnedTrade}

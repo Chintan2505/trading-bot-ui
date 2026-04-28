@@ -239,7 +239,7 @@ function getMarketStatus() {
   return { open: false, label: "CLOSED" };
 }
 
-function LiveClock({ symbol }) {
+function LiveClock() {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -272,10 +272,7 @@ function LiveClock({ symbol }) {
   const secondsLeft = 60 - now.getSeconds();
   const countdown = String(secondsLeft).padStart(2, "0");
 
-  const isCryptoSymbol = typeof symbol === "string" && symbol.includes("/");
-  const market = isCryptoSymbol
-    ? { open: true, label: "24/7" }
-    : getMarketStatus();
+  const market = getMarketStatus();
 
   return (
     <div className="h-7 border-t border-terminal-border bg-terminal-card/40 flex items-center justify-between px-3 text-[11px] font-mono flex-shrink-0">
@@ -339,6 +336,7 @@ export default function TradingView({
   botActivities,
   // Derived
   currentPrice,
+  liveQuote,
   priceChange,
   priceChangePct,
   isUp,
@@ -355,6 +353,7 @@ export default function TradingView({
   scalpSettings,
   scalpPositionState,
   activeScalpLevels,
+  onLevelsChange,
   tradeStats,
   hoveredTrade,
   pinnedTrade,
@@ -383,7 +382,6 @@ export default function TradingView({
   // Components
   Chart,
 }) {
-  console.log("🚀 ~ TradingView ~ scalpPositionState:", scalpPositionState);
   const [measureMode, setMeasureMode] = useState(false);
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
 
@@ -459,11 +457,16 @@ export default function TradingView({
               )}
             </div>
 
-            {/* Price Display */}
+            {/* Price Display — Last Trade is the same source the chart line AND
+                Alpaca's native bracket SL/TP trigger use. */}
             <div className="hidden md:flex items-center gap-2.5">
               <span
-                className={`text-lg font-mono font-bold ${isUp ? "text-bull" : "text-bear"}`}
+                className="text-[10px] uppercase text-gray-500 font-semibold"
+                title="Last Trade — same reference Alpaca uses to trigger SL/TP brackets"
               >
+                Last (trigger)
+              </span>
+              <span className={`text-lg font-mono font-bold ${isUp ? "text-bull" : "text-bear"}`}>
                 ${currentPrice.toFixed(2)}
               </span>
               <div
@@ -478,6 +481,19 @@ export default function TradingView({
                 {priceChange.toFixed(2)} ({isUp ? "+" : ""}
                 {priceChangePct.toFixed(2)}%)
               </div>
+              {liveQuote && (
+                <div className="hidden lg:flex items-center gap-1.5 text-[10px] font-mono text-gray-400">
+                  <span>
+                    Bid: <span className="text-bull">{liveQuote.bid.toFixed(2)}</span>
+                  </span>
+                  <span>|</span>
+                  <span>
+                    Ask: <span className="text-bear">{liveQuote.ask.toFixed(2)}</span>
+                  </span>
+                  <span>|</span>
+                  <span>Spread: {(liveQuote.ask - liveQuote.bid).toFixed(2)}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -776,8 +792,6 @@ export default function TradingView({
             )}
           </div>
 
-        
-
           {/* ── Content Area ── */}
           {activeTab === "chart" ? (
             <div className="flex-1 flex flex-col overflow-hidden">
@@ -791,6 +805,7 @@ export default function TradingView({
                     hoveredTrade={pinnedTrade || hoveredTrade}
                     measureMode={measureMode}
                     onMeasureEnd={() => setMeasureMode(false)}
+                    onLevelsChange={onLevelsChange}
                   />
                 </div>
                 {/* Floating card — shows for pinned (persistent) OR hover (transient) */}
@@ -807,7 +822,7 @@ export default function TradingView({
               <div className="h-[3px] bg-terminal-border hover:bg-gold/30 cursor-row-resize flex-shrink-0 flex items-center justify-center group">
                 <div className="w-8 h-[2px] rounded-full bg-terminal-accent group-hover:bg-gold/50 transition-colors" />
               </div>
-              <LiveClock symbol={activeSymbol} />
+              <LiveClock />
             </div>
           ) : activeTab === "trades" ? (
             <div className="flex-1 overflow-auto p-4 space-y-4">
@@ -843,6 +858,24 @@ export default function TradingView({
                 className={`text-2xl font-mono font-bold tracking-tight ${isUp ? "text-bull" : "text-bear"}`}
               >
                 ${currentPrice.toFixed(2)}
+                <span
+                  className="ml-2 text-[10px] uppercase text-gray-500 font-semibold tracking-wider"
+                  title="Last Trade — same reference Alpaca uses to trigger SL/TP"
+                >
+                  Last (trigger)
+                </span>
+              </div>
+              {liveQuote && (
+                <div className="mt-1 text-[10px] font-mono text-gray-400 leading-relaxed">
+                  Bid: <span className="text-bull">{liveQuote.bid.toFixed(2)}</span>
+                  {" | "}
+                  Ask: <span className="text-bear">{liveQuote.ask.toFixed(2)}</span>
+                  {" | "}
+                  Spread: {(liveQuote.ask - liveQuote.bid).toFixed(2)}
+                </div>
+              )}
+              <div className="mt-1 text-[9px] text-gray-500 italic leading-tight">
+                SL/TP trigger on Last Trade (Alpaca server-side). Fill price = Bid/Ask.
               </div>
             </div>
 
@@ -914,7 +947,7 @@ export default function TradingView({
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-bold text-gold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
-                      POSITION OPEN ({activeScalpLevels.side})7
+                      POSITION OPEN ({activeScalpLevels.side})
                     </span>
                     <span className="text-[9px] text-gray-500 font-mono">
                       qty {activeScalpLevels.qty || scalpSettings.qty}
@@ -995,29 +1028,33 @@ export default function TradingView({
                   <div className="space-y-1">
                     <SettingLabel
                       label="Take Profit %"
-                      tooltip="Auto-sell when price rises by this % from entry"
+                      tooltip="Enter as percent: 0.5 = 0.5%, 1 = 1%, 5 = 5%. Auto-sell when price rises this much from entry."
                     />
-                    <input
-                      type="number"
-                      value={scalpSettings.takeProfitPct}
-                      onChange={(e) =>
-                        handleScalpSettingChange(
-                          "takeProfitPct",
-                          e.target.value,
-                        )
-                      }
-                      min="0.05"
-                      max="5"
-                      step="0.05"
-                      disabled={scalpSettings.autoSlTp}
-                      className="w-full bg-terminal-bg border border-terminal-border rounded-lg px-2.5 py-1.5 text-sm font-mono text-bull focus:outline-none focus:border-bull/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    {currentPrice > 0 && !scalpSettings.autoSlTp && (
-                      <div className="text-[9px] font-mono text-bull/70">
-                        ≈ $
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={scalpSettings.takeProfitPct}
+                        onChange={(e) =>
+                          handleScalpSettingChange(
+                            "takeProfitPct",
+                            e.target.value,
+                          )
+                        }
+                        min="0.05"
+                        max="10"
+                        step="0.1"
+                        placeholder="0.5"
+                        disabled={scalpSettings.autoSlTp}
+                        className="w-full bg-terminal-bg border border-terminal-border rounded-lg pl-2.5 pr-6 py-1.5 text-sm font-mono text-bull focus:outline-none focus:border-bull/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-mono text-bull/60 pointer-events-none">%</span>
+                    </div>
+                    {currentPrice > 0 && !scalpSettings.autoSlTp && parseFloat(scalpSettings.takeProfitPct) > 0 && (
+                      <div className="text-[10px] font-mono text-bull/70">
+                        +{scalpSettings.takeProfitPct}% → $
                         {(
                           currentPrice *
-                          (1 + scalpSettings.takeProfitPct / 100)
+                          (1 + parseFloat(scalpSettings.takeProfitPct) / 100)
                         ).toFixed(2)}
                       </div>
                     )}
@@ -1025,26 +1062,30 @@ export default function TradingView({
                   <div className="space-y-1">
                     <SettingLabel
                       label="Stop Loss %"
-                      tooltip="Auto-sell when price drops by this % from entry"
+                      tooltip="Enter as percent: 0.3 = 0.3%, 1 = 1%. Auto-sell when price drops this much from entry."
                     />
-                    <input
-                      type="number"
-                      value={scalpSettings.stopLossPct}
-                      onChange={(e) =>
-                        handleScalpSettingChange("stopLossPct", e.target.value)
-                      }
-                      min="0.05"
-                      max="5"
-                      step="0.05"
-                      disabled={scalpSettings.autoSlTp}
-                      className="w-full bg-terminal-bg border border-terminal-border rounded-lg px-2.5 py-1.5 text-sm font-mono text-bear focus:outline-none focus:border-bear/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    {currentPrice > 0 && !scalpSettings.autoSlTp && (
-                      <div className="text-[9px] font-mono text-bear/70">
-                        ≈ $
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={scalpSettings.stopLossPct}
+                        onChange={(e) =>
+                          handleScalpSettingChange("stopLossPct", e.target.value)
+                        }
+                        min="0.05"
+                        max="10"
+                        step="0.1"
+                        placeholder="0.3"
+                        disabled={scalpSettings.autoSlTp}
+                        className="w-full bg-terminal-bg border border-terminal-border rounded-lg pl-2.5 pr-6 py-1.5 text-sm font-mono text-bear focus:outline-none focus:border-bear/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-mono text-bear/60 pointer-events-none">%</span>
+                    </div>
+                    {currentPrice > 0 && !scalpSettings.autoSlTp && parseFloat(scalpSettings.stopLossPct) > 0 && (
+                      <div className="text-[10px] font-mono text-bear/70">
+                        −{scalpSettings.stopLossPct}% → $
                         {(
                           currentPrice *
-                          (1 - scalpSettings.stopLossPct / 100)
+                          (1 - parseFloat(scalpSettings.stopLossPct) / 100)
                         ).toFixed(2)}
                       </div>
                     )}

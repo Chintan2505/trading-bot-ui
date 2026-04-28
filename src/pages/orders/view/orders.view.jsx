@@ -126,52 +126,113 @@ export default function OrdersView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-[12px]">
               <thead>
                 <tr className="border-b border-terminal-border">
-                  {['Symbol', 'Side', 'Type', 'Qty', 'Filled', 'Price', 'Status', 'Submitted', 'Action'].map(h => (
-                    <th key={h} className="text-left text-[10px] uppercase tracking-wider text-gray-500 font-semibold py-2.5 px-3">{h}</th>
+                  {[
+                    'Symbol',
+                    'Side',
+                    'Type',
+                    'Class',
+                    'Qty',
+                    'Filled',
+                    'Fill Price',
+                    'Notional',
+                    'Limit/Stop',
+                    'Status',
+                    'Submitted',
+                    'Filled At',
+                    'Duration',
+                    'Order ID',
+                    'Action',
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left text-[10px] uppercase tracking-wider text-gray-500 font-semibold py-2.5 px-3 whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-terminal-border">
-                {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-terminal-hover/50 transition-colors">
-                    <td className="py-2.5 px-3 text-sm font-semibold text-white">{order.symbol}</td>
-                    <td className="py-2.5 px-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                        order.side === 'buy' ? 'bg-bull/10 text-bull' : 'bg-bear/10 text-bear'
-                      }`}>
-                        {order.side?.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-[12px] text-gray-400 capitalize">{order.type}</td>
-                    <td className="py-2.5 px-3 text-sm font-mono text-gray-300">{order.qty}</td>
-                    <td className="py-2.5 px-3 text-sm font-mono text-gray-300">{order.filled_qty || '0'}</td>
-                    <td className="py-2.5 px-3 text-sm font-mono text-gray-300">
-                      {order.limit_price ? `$${order.limit_price}` : order.stop_price ? `$${order.stop_price}` : 'Market'}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${STATUS_COLORS[order.status] || 'bg-gray-800 text-gray-500'}`}>
-                        {order.status?.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-[11px] font-mono text-gray-500">
-                      {order.submitted_at ? new Date(order.submitted_at).toLocaleString() : '--'}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      {(order.status === 'new' || order.status === 'accepted' || order.status === 'pending_new') && (
-                        <button
-                          onClick={() => handleCancel(order.id)}
-                          disabled={cancellingId === order.id}
-                          className="px-2.5 py-1 rounded-lg text-[10px] font-semibold text-bear border border-bear/30 bg-bear/5 hover:bg-bear/15 transition-colors disabled:opacity-50"
+                {orders.map((order) => {
+                  const notional =
+                    order.notional ||
+                    (order.filled_avg_price && order.filled_qty
+                      ? parseFloat(order.filled_avg_price) * parseFloat(order.filled_qty)
+                      : null);
+                  const durationMs =
+                    order.filled_at && order.submitted_at
+                      ? new Date(order.filled_at) - new Date(order.submitted_at)
+                      : null;
+                  const durationStr = durationMs
+                    ? durationMs < 1000
+                      ? `${durationMs}ms`
+                      : durationMs < 60000
+                        ? `${(durationMs / 1000).toFixed(1)}s`
+                        : `${Math.floor(durationMs / 60000)}m ${Math.floor((durationMs / 1000) % 60)}s`
+                    : '--';
+                  return (
+                    <tr key={order.id} className="hover:bg-terminal-hover/50 transition-colors">
+                      <td className="py-2.5 px-3 font-semibold text-white whitespace-nowrap">{order.symbol}</td>
+                      <td className="py-2.5 px-3">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            order.side === 'buy' ? 'bg-bull/10 text-bull' : 'bg-bear/10 text-bear'
+                          }`}
                         >
-                          {cancellingId === order.id ? '...' : 'Cancel'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                          {order.side?.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-gray-400 capitalize whitespace-nowrap">{order.type}</td>
+                      <td className="py-2.5 px-3 text-gray-400 capitalize whitespace-nowrap">{order.order_class || 'simple'}</td>
+                      <td className="py-2.5 px-3 font-mono text-gray-300 whitespace-nowrap">{order.qty}</td>
+                      <td className="py-2.5 px-3 font-mono text-gray-300 whitespace-nowrap">{order.filled_qty || '0'}</td>
+                      <td className="py-2.5 px-3 font-mono text-gray-200 whitespace-nowrap">
+                        {order.filled_avg_price ? `$${parseFloat(order.filled_avg_price).toFixed(2)}` : <span className="text-gray-600">--</span>}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-gray-300 whitespace-nowrap">
+                        {notional ? `$${parseFloat(notional).toFixed(2)}` : <span className="text-gray-600">--</span>}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-gray-400 whitespace-nowrap">
+                        {order.limit_price
+                          ? `L: $${order.limit_price}`
+                          : order.stop_price
+                            ? `S: $${order.stop_price}`
+                            : 'Market'}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${STATUS_COLORS[order.status] || 'bg-gray-800 text-gray-500'}`}
+                        >
+                          {order.status?.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-gray-400 whitespace-nowrap">
+                        {order.submitted_at ? new Date(order.submitted_at).toLocaleString() : '--'}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-gray-400 whitespace-nowrap">
+                        {order.filled_at ? new Date(order.filled_at).toLocaleString() : '--'}
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-gray-400 whitespace-nowrap">{durationStr}</td>
+                      <td className="py-2.5 px-3 font-mono text-[10px] text-gray-500 bg-terminal-bg/50 whitespace-nowrap" title={order.id}>
+                        {order.id ? order.id.substring(0, 8) : '--'}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        {(order.status === 'new' || order.status === 'accepted' || order.status === 'pending_new') && (
+                          <button
+                            onClick={() => handleCancel(order.id)}
+                            disabled={cancellingId === order.id}
+                            className="px-2.5 py-1 rounded-lg text-[10px] font-semibold text-bear border border-bear/30 bg-bear/5 hover:bg-bear/15 transition-colors disabled:opacity-50"
+                          >
+                            {cancellingId === order.id ? '...' : 'Cancel'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

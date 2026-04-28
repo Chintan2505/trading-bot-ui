@@ -17,7 +17,7 @@ const CHART_COLORS = {
   volumeDown: '#ff497618',
 };
 
-export default function Chart({ data, liveBar, scalpLevels = null, hoveredTrade = null, measureMode = false, onMeasureEnd }) {
+export default function Chart({ data, liveBar, scalpLevels = null, hoveredTrade = null, measureMode = false, onMeasureEnd, onLevelsChange = null }) {
   const containerRef = useRef();
   const chartRef = useRef();
   const candleRef = useRef();
@@ -31,6 +31,14 @@ export default function Chart({ data, liveBar, scalpLevels = null, hoveredTrade 
   const overlayRef = useRef(null);
   const measureState = useRef({ active: false, startX: 0, startY: 0, startPrice: 0, startTime: 0 });
   const [measureData, setMeasureData] = useState(null);
+
+  // Drag SL/TP state (TradingView-style)
+  const dragRef = useRef({ active: false, which: null, currentPrice: null });
+  const tpLineRef = useRef(null);
+  const slLineRef = useRef(null);
+  const entryRef = useRef(null);
+  const scalpLevelsRef = useRef(scalpLevels);
+  useEffect(() => { scalpLevelsRef.current = scalpLevels; }, [scalpLevels]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -153,7 +161,7 @@ export default function Chart({ data, liveBar, scalpLevels = null, hoveredTrade 
     if (hoveredTrade) return;
     if (!scalpLevels) return;
 
-    const { entry, tp, sl, side } = scalpLevels;
+    const { entry, signal, tp, sl, side } = scalpLevels;
     const isBuy = side === 'BUY';
 
     if (entry != null) {
@@ -166,27 +174,55 @@ export default function Chart({ data, liveBar, scalpLevels = null, hoveredTrade 
         title: `ENTRY ${isBuy ? 'BUY' : 'SELL'}`,
       }));
     }
+    if (signal != null && entry != null && Math.abs(signal - entry) > 0.000001) {
+      priceLinesRef.current.push(candleRef.current.createPriceLine({
+        price: signal,
+        color: '#8b9bb4',
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: 'SIGNAL EXEC',
+      }));
+    }
+
+    const fmtDelta = (price, ref) => {
+      if (ref == null || price == null) return '';
+      const d = price - ref;
+      const pct = (d / ref) * 100;
+      const sign = d >= 0 ? '+' : '';
+      return ` (${sign}$${d.toFixed(2)} / ${sign}${pct.toFixed(2)}%)`;
+    };
+
+    entryRef.current = entry;
 
     if (tp != null) {
-      priceLinesRef.current.push(candleRef.current.createPriceLine({
+      const tpLine = candleRef.current.createPriceLine({
         price: tp,
         color: CHART_COLORS.candleUp,
         lineWidth: 2,
         lineStyle: 2,
         axisLabelVisible: true,
-        title: `TP $${tp.toFixed(2)}`,
-      }));
+        title: `TP $${tp.toFixed(2)}${fmtDelta(tp, entry)} ⇕`,
+      });
+      tpLineRef.current = tpLine;
+      priceLinesRef.current.push(tpLine);
+    } else {
+      tpLineRef.current = null;
     }
 
     if (sl != null) {
-      priceLinesRef.current.push(candleRef.current.createPriceLine({
+      const slLine = candleRef.current.createPriceLine({
         price: sl,
         color: CHART_COLORS.candleDown,
         lineWidth: 2,
         lineStyle: 2,
         axisLabelVisible: true,
-        title: `SL $${sl.toFixed(2)}`,
-      }));
+        title: `SL $${sl.toFixed(2)}${fmtDelta(sl, entry)} ⇕`,
+      });
+      slLineRef.current = slLine;
+      priceLinesRef.current.push(slLine);
+    } else {
+      slLineRef.current = null;
     }
   }, [scalpLevels, hoveredTrade]);
 
@@ -271,14 +307,15 @@ export default function Chart({ data, liveBar, scalpLevels = null, hoveredTrade 
     const markers = [];
 
     // Entry marker (BUY/SELL arrow below/above the candle)
-    if (hoveredTrade.createdAt && hoveredTrade.entryPrice) {
+    const executedEntry = hoveredTrade.executedEntryPrice ?? hoveredTrade.entryPrice;
+    if (hoveredTrade.createdAt && executedEntry) {
       const t = Math.floor(new Date(hoveredTrade.createdAt).getTime() / 1000) + IST_OFFSET_SEC;
       markers.push({
         time: t,
         position: side === 'BUY' ? 'belowBar' : 'aboveBar',
         color: '#f0b90b',
         shape: side === 'BUY' ? 'arrowUp' : 'arrowDown',
-        text: `${side} $${hoveredTrade.entryPrice.toFixed(2)}`,
+        text: `${side} fill $${executedEntry.toFixed(2)}`,
         size: 2,
       });
     }
@@ -391,18 +428,48 @@ export default function Chart({ data, liveBar, scalpLevels = null, hoveredTrade 
 
     if (!hoveredTrade) return;
 
-    const { entryPrice, exitPrice, takeProfitPrice, stopLossPrice, partialPrice, partialTaken, pnl, decision, side } = hoveredTrade;
+    const {
+      entryPrice,
+      executedEntryPrice,
+      signalPriceMid,
+      signalPriceExec,
+      exitPrice,
+      takeProfitPrice,
+      stopLossPrice,
+      partialPrice,
+      partialTaken,
+      pnl,
+      decision,
+      side,
+    } = hoveredTrade;
     const isBuy = (decision || side) === 'BUY';
     const pnlPositive = (pnl ?? 0) >= 0;
+    const entryFill = executedEntryPrice ?? entryPrice;
 
-    if (entryPrice != null) {
+    if (entryFill != null) {
       hoverLinesRef.current.push(candleRef.current.createPriceLine({
-        price: entryPrice,
+        price: entryFill,
         color: '#f0b90b',
         lineWidth: 2,
         lineStyle: 0,
         axisLabelVisible: true,
-        title: `◉ ${isBuy ? 'BUY' : 'SELL'} $${entryPrice.toFixed(2)}`,
+        title: `◉ ${isBuy ? 'BUY' : 'SELL'} fill $${entryFill.toFixed(2)}`,
+      }));
+    }
+    const signalReference = signalPriceExec ?? signalPriceMid;
+    const signalLabel = signalPriceExec != null ? 'signal(exec)' : 'signal(mid)';
+    if (
+      signalReference != null &&
+      entryFill != null &&
+      Math.abs(signalReference - entryFill) > 0.000001
+    ) {
+      hoverLinesRef.current.push(candleRef.current.createPriceLine({
+        price: signalReference,
+        color: '#8b9bb4',
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: `${signalLabel} $${signalReference.toFixed(2)}`,
       }));
     }
 
@@ -490,6 +557,132 @@ export default function Chart({ data, liveBar, scalpLevels = null, hoveredTrade 
       try { ts.unsubscribeVisibleLogicalRangeChange(handler); } catch { /* ignore */ }
     };
   }, [hoveredTrade, drawHoverLines, drawHoverMarkers, clearHoverOverlay]);
+
+  // ────────────────────── DRAG SL/TP (TradingView-style) ──────────────────────
+  // Click within ~6px of TP or SL line, drag to new price, release to commit.
+  // Default: locked. Only active when onLevelsChange prop provided + scalpLevels set.
+  useEffect(() => {
+    if (!onLevelsChange) return;
+    if (measureMode) return; // measure tool wins
+    const el = containerRef.current;
+    if (!el) return;
+
+    const HIT_PX = 8;
+
+    const fmtDeltaTitle = (price, ref, kind) => {
+      if (ref == null || price == null) return `${kind} $${price.toFixed(2)} ⇕`;
+      const d = price - ref;
+      const pct = (d / ref) * 100;
+      const sign = d >= 0 ? '+' : '';
+      return `${kind} $${price.toFixed(2)} (${sign}$${d.toFixed(2)} / ${sign}${pct.toFixed(2)}%) ⇕`;
+    };
+
+    const priceToY = (price) => {
+      if (!candleRef.current || price == null) return null;
+      try { return candleRef.current.priceToCoordinate(price); } catch { return null; }
+    };
+
+    const hitTest = (clientY) => {
+      const rect = el.getBoundingClientRect();
+      const y = clientY - rect.top;
+      const lvl = scalpLevelsRef.current;
+      if (!lvl) return null;
+      const tpY = priceToY(lvl.tp);
+      const slY = priceToY(lvl.sl);
+      if (tpY != null && Math.abs(y - tpY) <= HIT_PX) return 'tp';
+      if (slY != null && Math.abs(y - slY) <= HIT_PX) return 'sl';
+      return null;
+    };
+
+    const onMove = (e) => {
+      // Hover cursor when over a draggable line (not while dragging)
+      if (!dragRef.current.active) {
+        const hit = hitTest(e.clientY);
+        el.style.cursor = hit ? 'ns-resize' : '';
+        return;
+      }
+
+      // Active drag — recompute price from cursor Y, redraw line live
+      const rect = el.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const newPrice = candleRef.current?.coordinateToPrice(y);
+      if (newPrice == null || !isFinite(newPrice)) return;
+      const rounded = parseFloat(newPrice.toFixed(2));
+      dragRef.current.currentPrice = rounded;
+      const which = dragRef.current.which;
+      const target = which === 'tp' ? tpLineRef.current : slLineRef.current;
+      if (target) {
+        try {
+          target.applyOptions({
+            price: rounded,
+            title: fmtDeltaTitle(rounded, entryRef.current, which.toUpperCase()),
+          });
+        } catch { /* ignore */ }
+      }
+    };
+
+    const onDown = (e) => {
+      const hit = hitTest(e.clientY);
+      if (!hit) return;
+      // Block chart pan/scroll while dragging line
+      e.preventDefault();
+      e.stopPropagation();
+      try { chartRef.current?.applyOptions({ handleScroll: false, handleScale: false }); } catch { /* ignore */ }
+      dragRef.current = { active: true, which: hit, currentPrice: scalpLevelsRef.current?.[hit] ?? null };
+      el.style.cursor = 'ns-resize';
+    };
+
+    const onUp = () => {
+      if (!dragRef.current.active) return;
+      const finalPrice = dragRef.current.currentPrice;
+      const which = dragRef.current.which;
+      dragRef.current = { active: false, which: null, currentPrice: null };
+      el.style.cursor = '';
+      try { chartRef.current?.applyOptions({ handleScroll: true, handleScale: true }); } catch { /* ignore */ }
+
+      const lvl = scalpLevelsRef.current;
+      if (!lvl || finalPrice == null) return;
+
+      const newTp = which === 'tp' ? finalPrice : lvl.tp;
+      const newSl = which === 'sl' ? finalPrice : lvl.sl;
+
+      // Direction sanity client-side (server also validates)
+      const isBuy = lvl.side === 'BUY';
+      const entry = lvl.entry;
+      if (entry != null) {
+        if (isBuy && (newTp <= entry || newSl >= entry)) {
+          console.warn('[DragLevels] Invalid for BUY — TP must > entry, SL < entry');
+          // Snap line back to original
+          try { tpLineRef.current?.applyOptions({ price: lvl.tp }); slLineRef.current?.applyOptions({ price: lvl.sl }); } catch { /* ignore */ }
+          return;
+        }
+        if (!isBuy && (newTp >= entry || newSl <= entry)) {
+          console.warn('[DragLevels] Invalid for SELL — TP must < entry, SL > entry');
+          try { tpLineRef.current?.applyOptions({ price: lvl.tp }); slLineRef.current?.applyOptions({ price: lvl.sl }); } catch { /* ignore */ }
+          return;
+        }
+      }
+
+      onLevelsChange({ tp: newTp, sl: newSl });
+    };
+
+    const onLeave = () => {
+      if (!dragRef.current.active) el.style.cursor = '';
+    };
+
+    el.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    el.addEventListener('mouseleave', onLeave);
+
+    return () => {
+      el.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      el.removeEventListener('mouseleave', onLeave);
+      el.style.cursor = '';
+    };
+  }, [onLevelsChange, measureMode]);
 
   // ────────────────────── MEASURE TOOL ──────────────────────
 

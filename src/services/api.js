@@ -20,7 +20,7 @@ export const getHistoricalCandles = async (symbol = 'AAPL', options = {}) => {
 };
 
 // ── Account ──
-export const getAccountInfo = async () => {
+export const getAccountInfo = async () => { 
   const response = await api.get('/account');
   return response.data;
 };
@@ -100,6 +100,12 @@ export const getTrades = async (page = 1, limit = 50, filters = {}) => {
 
 export const getTradeStats = async () => {
   const response = await api.get('/trades/stats');
+  return response.data;
+};
+
+// Verify a single trade's numbers against Alpaca (real fill price, qty, fees)
+export const verifyTrade = async (tradeId) => {
+  const response = await api.get(`/trades/${tradeId}/verify`);
   return response.data;
 };
 

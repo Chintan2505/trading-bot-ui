@@ -4,7 +4,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { format } from 'date-fns';
 
 export default function ChartCard({ data }) {
-  console.log("🚀 ~ ChartCard ~ data:", data)
   // Format tooltip
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
