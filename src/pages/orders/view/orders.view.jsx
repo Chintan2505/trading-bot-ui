@@ -20,7 +20,7 @@ const COLUMNS = [
     <span className="font-semibold text-white whitespace-nowrap">{o.symbol}</span>
   )},
   { id: 'side', label: 'Side', render: (o) => (
-    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${o.side === 'buy' ? 'bg-bull/10 text-bull' : 'bg-bear/10 text-bear'}`}>
+    <span className={`text-[12px] font-bold px-2 py-0.5 rounded ${o.side === 'buy' ? 'bg-bull/10 text-bull' : 'bg-bear/10 text-bear'}`}>
       {o.side?.toUpperCase()}
     </span>
   )},
@@ -44,7 +44,7 @@ const COLUMNS = [
     </span>
   )},
   { id: 'status', label: 'Status', render: (o) => (
-    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${STATUS_COLORS[o.status] || 'bg-gray-800 text-gray-500'}`}>
+    <span className={`text-[12px] font-bold px-2 py-0.5 rounded ${STATUS_COLORS[o.status] || 'bg-gray-800 text-gray-500'}`}>
       {o.status?.toUpperCase()}
     </span>
   )},
@@ -65,7 +65,7 @@ const COLUMNS = [
     return <span className="font-mono text-gray-400 whitespace-nowrap">{str}</span>;
   }},
   { id: 'order_id', label: 'Order ID', render: (o) => (
-    <span className="font-mono text-[10px] text-gray-500 bg-terminal-bg/50 whitespace-nowrap" title={o.id}>
+    <span className="font-mono text-[12px] text-gray-500 bg-terminal-bg/50 whitespace-nowrap" title={o.id}>
       {o.id ? o.id.substring(0, 8) : '--'}
     </span>
   )},
@@ -153,11 +153,11 @@ export default function OrdersView({
             {colsOpen && (
               <div className="absolute right-0 top-full mt-1 w-56 max-h-96 overflow-y-auto rounded-lg border border-terminal-border bg-terminal-card shadow-xl z-50">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-terminal-border">
-                  <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Toggle Columns</span>
+                  <span className="text-[12px] uppercase tracking-wider text-gray-500 font-semibold">Toggle Columns</span>
                   <div className="flex gap-1">
-                    <button onClick={showAll} className="text-[10px] text-gold hover:underline">All</button>
-                    <span className="text-[10px] text-gray-700">|</span>
-                    <button onClick={hideAll} className="text-[10px] text-gray-500 hover:underline">None</button>
+                    <button onClick={showAll} className="text-[12px] text-gold hover:underline">All</button>
+                    <span className="text-[12px] text-gray-700">|</span>
+                    <button onClick={hideAll} className="text-[12px] text-gray-500 hover:underline">None</button>
                   </div>
                 </div>
                 {COLUMNS.map((c) => {
@@ -271,12 +271,12 @@ export default function OrdersView({
                   {visibleColumns.map((c) => (
                     <th
                       key={c.id}
-                      className="text-left text-[10px] uppercase tracking-wider text-gray-500 font-semibold py-2.5 px-3 whitespace-nowrap"
+                      className="text-left text-[12px] uppercase tracking-wider text-gray-500 font-semibold py-2.5 px-3 whitespace-nowrap"
                     >
                       {c.label}
                     </th>
                   ))}
-                  <th className="text-left text-[10px] uppercase tracking-wider text-gray-500 font-semibold py-2.5 px-3 whitespace-nowrap">
+                  <th className="text-left text-[12px] uppercase tracking-wider text-gray-500 font-semibold py-2.5 px-3 whitespace-nowrap">
                     Action
                   </th>
                 </tr>
@@ -292,7 +292,7 @@ export default function OrdersView({
                         <button
                           onClick={() => handleCancel(order.id)}
                           disabled={cancellingId === order.id}
-                          className="px-2.5 py-1 rounded-lg text-[10px] font-semibold text-bear border border-bear/30 bg-bear/5 hover:bg-bear/15 transition-colors disabled:opacity-50"
+                          className="px-2.5 py-1 rounded-lg text-[12px] font-semibold text-bear border border-bear/30 bg-bear/5 hover:bg-bear/15 transition-colors disabled:opacity-50"
                         >
                           {cancellingId === order.id ? '...' : 'Cancel'}
                         </button>
@@ -312,7 +312,7 @@ export default function OrdersView({
 function FormField({ label, type = 'text', value, onChange, placeholder }) {
   return (
     <div className="space-y-1">
-      <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{label}</label>
+      <label className="text-[12px] uppercase tracking-wider text-gray-500 font-semibold">{label}</label>
       <input
         type={type}
         value={value}
@@ -328,7 +328,7 @@ function FormField({ label, type = 'text', value, onChange, placeholder }) {
 function FormSelect({ label, value, onChange, options }) {
   return (
     <div className="space-y-1">
-      <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{label}</label>
+      <label className="text-[12px] uppercase tracking-wider text-gray-500 font-semibold">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}

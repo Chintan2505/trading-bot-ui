@@ -51,7 +51,7 @@ export function Tooltip({ text, icon, className = '' }) {
       </span>
       {show && createPortal(
         <div
-          className="fixed z-[9999] px-2.5 py-2 rounded-lg bg-[#1a1f2e] border border-terminal-border text-[10px] text-gray-300 font-normal normal-case tracking-normal w-44 leading-relaxed shadow-xl pointer-events-none"
+          className="fixed z-[9999] px-2.5 py-2 rounded-lg bg-[#1a1f2e] border border-terminal-border text-[12px] text-gray-300 font-normal normal-case tracking-normal w-44 leading-relaxed shadow-xl pointer-events-none"
           style={style}
         >
           {text}
@@ -70,7 +70,7 @@ export function Tooltip({ text, icon, className = '' }) {
  */
 export function SettingLabel({ label, tooltip }) {
   return (
-    <label className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold flex items-center gap-1">
+    <label className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold flex items-center gap-1">
       {label}
       <Tooltip text={tooltip} />
     </label>

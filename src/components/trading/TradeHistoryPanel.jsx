@@ -169,7 +169,7 @@ export default function TradeHistoryPanel({
     <div className="h-full flex flex-col bg-terminal-card/30">
       {/* Count + refresh bar */}
       <div className="px-3 py-1.5 border-b border-terminal-border flex items-center justify-between flex-shrink-0">
-        <span className="text-[9px] font-mono text-gray-500">
+        <span className="text-[11px] font-mono text-gray-500">
           {allTrades.length} of {total} {total === 1 ? "trade" : "trades"}
         </span>
         <button
@@ -184,7 +184,7 @@ export default function TradeHistoryPanel({
 
       {/* Hint */}
       <div className="px-3 py-1.5 border-b border-terminal-border bg-gold/5 flex-shrink-0">
-        <p className="text-[8px] text-gold/70 leading-tight">
+        <p className="text-[10px] text-gold/70 leading-tight">
           💡 Hover to preview · Click to pin
         </p>
       </div>
@@ -198,7 +198,7 @@ export default function TradeHistoryPanel({
         ) : allTrades.length === 0 ? (
           <div className="p-6 text-center">
             <p className="text-xs text-gray-600">No trades yet</p>
-            <p className="text-[9px] text-gray-700 mt-1">
+            <p className="text-[11px] text-gray-700 mt-1">
               Start auto-trading to see history
             </p>
           </div>
@@ -248,7 +248,7 @@ export default function TradeHistoryPanel({
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-1.5">
                       <span
-                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-bold ${
                           isBuy
                             ? "bg-bull/10 text-bull"
                             : "bg-bear/10 text-bear"
@@ -261,7 +261,7 @@ export default function TradeHistoryPanel({
                         )}
                         {t.decision || t.side}
                       </span>
-                      <span className="text-[10px] font-semibold text-white">
+                      <span className="text-[12px] font-semibold text-white">
                         {t.symbol}
                       </span>
                       {t.partialTaken && (
@@ -273,13 +273,13 @@ export default function TradeHistoryPanel({
                     </div>
                     <div className="flex items-center gap-1">
                       {!isClosed && (
-                        <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-blue-500/10 text-blue-400">
+                        <span className="px-1 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400">
                           OPEN
                         </span>
                       )}
                       {exitTag && (
                         <span
-                          className={`px-1 py-0.5 rounded text-[8px] font-mono ${
+                          className={`px-1 py-0.5 rounded text-[10px] font-mono ${
                             t.exitReason === "TP_HIT"
                               ? "bg-bull/10 text-bull"
                               : t.exitReason === "SL_HIT"
@@ -294,7 +294,7 @@ export default function TradeHistoryPanel({
                   </div>
 
                   {/* Prices row */}
-                  <div className="flex items-center justify-between text-[10px] font-mono">
+                  <div className="flex items-center justify-between text-[12px] font-mono">
                     <div className="text-gray-400">
                       <span className="text-gray-600">S</span>{" "}
                       {fmtPrice(signalPrice)}
@@ -357,13 +357,13 @@ export default function TradeHistoryPanel({
             {loadingMore && (
               <div className="py-3 flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 text-gold animate-spin" />
-                <span className="text-[10px] text-gray-500">
+                <span className="text-[12px] text-gray-500">
                   Loading more...
                 </span>
               </div>
             )}
             {!hasMore && trades.length > 0 && (
-              <div className="py-3 text-center text-[9px] text-gray-600">
+              <div className="py-3 text-center text-[11px] text-gray-600">
                 All {total} trades loaded
               </div>
             )}

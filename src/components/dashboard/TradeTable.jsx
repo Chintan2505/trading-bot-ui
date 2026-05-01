@@ -37,7 +37,7 @@ const EXECUTED_BY_LABEL = {
   manual: '🧪 TEST',
 };
 
-export default function TradeTable({ liveLogs = [] }) {
+export default function TradeTable({ liveLogs = [], symbol }) {
   const [trades, setTrades] = useState([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -79,6 +79,7 @@ export default function TradeTable({ liveLogs = [] }) {
     setLoading(true);
     try {
       const params = { ...filters };
+      if (symbol) params.symbol = symbol;
       Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
       const res = await getTrades(p, LIMIT, params);
       if (res?.success) {
@@ -91,9 +92,9 @@ export default function TradeTable({ liveLogs = [] }) {
       console.error('Failed to fetch trades:', err);
     }
     setLoading(false);
-  }, [filters]);
+  }, [filters, symbol]);
 
-  // Load on mount and when filters change
+  // Load on mount and when filters/symbol change
   useEffect(() => {
     fetchTrades(1);
   }, [fetchTrades]);
@@ -103,6 +104,7 @@ export default function TradeTable({ liveLogs = [] }) {
     if (liveLogs.length > 0) {
       fetchTrades(page);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveLogs.length]);
 
   const handleFilterChange = (key, val) => {
@@ -115,11 +117,10 @@ export default function TradeTable({ liveLogs = [] }) {
 
   const hasActiveFilters = Object.values(filters).some(v => v !== '');
 
-  // Merge live socket trades (OPEN) on top of API trades
+  // Merge live socket trades (OPEN) on top of API trades (filtered to current symbol)
   const allTrades = [...trades];
-  // Add any live OPEN trades that aren't in the API results
   liveLogs.forEach(live => {
-    if (live.status === 'OPEN' && !allTrades.find(t => t.orderId === live.orderId)) {
+    if (live.status === 'OPEN' && (!symbol || live.symbol === symbol) && !allTrades.find(t => t.orderId === live.orderId)) {
       allTrades.unshift(live);
     }
   });
@@ -129,18 +130,20 @@ export default function TradeTable({ liveLogs = [] }) {
       {/* Header */}
       <div className="px-4 py-3 border-b border-terminal-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="text-xs uppercase tracking-widest text-gray-500 font-semibold">Trade History</h3>
-          <span className="text-[9px] font-mono text-gray-600 bg-terminal-bg px-1.5 py-0.5 rounded">{total} total</span>
+          <h3 className="text-xs uppercase tracking-widest text-gray-500 font-semibold">
+            Trade History {symbol ? <span className="text-gold normal-case ml-1">· {symbol}</span> : null}
+          </h3>
+          <span className="text-[11px] font-mono text-gray-600 bg-terminal-bg px-1.5 py-0.5 rounded">{total} total</span>
         </div>
         <div className="flex items-center gap-2">
           {hasActiveFilters && (
-            <button onClick={clearFilters} className="flex items-center gap-1 text-[9px] text-bear hover:text-bear/80 transition-colors">
+            <button onClick={clearFilters} className="flex items-center gap-1 text-[11px] text-bear hover:text-bear/80 transition-colors">
               <X className="w-3 h-3" /> Clear
             </button>
           )}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+            className={`flex items-center gap-1 px-2 py-1 rounded text-[12px] font-medium transition-colors ${
               showFilters || hasActiveFilters ? 'bg-gold/15 text-gold' : 'text-gray-500 hover:text-gray-300 hover:bg-terminal-hover'
             }`}
           >
@@ -155,9 +158,9 @@ export default function TradeTable({ liveLogs = [] }) {
         <div className="px-4 py-2.5 border-b border-terminal-border bg-terminal-card/30">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
             <div>
-              <label className="text-[8px] text-gray-600 uppercase block mb-0.5">Status</label>
+              <label className="text-[10px] text-gray-600 uppercase block mb-0.5">Status</label>
               <select value={filters.status} onChange={e => handleFilterChange('status', e.target.value)}
-                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-gold/50">
+                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[12px] text-gray-300 focus:outline-none focus:border-gold/50">
                 <option value="">All</option>
                 <option value="OPEN">Open</option>
                 <option value="CLOSED">Closed</option>
@@ -165,27 +168,27 @@ export default function TradeTable({ liveLogs = [] }) {
               </select>
             </div>
             <div>
-              <label className="text-[8px] text-gray-600 uppercase block mb-0.5">Side</label>
+              <label className="text-[10px] text-gray-600 uppercase block mb-0.5">Side</label>
               <select value={filters.decision} onChange={e => handleFilterChange('decision', e.target.value)}
-                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-gold/50">
+                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[12px] text-gray-300 focus:outline-none focus:border-gold/50">
                 <option value="">All</option>
                 <option value="BUY">Buy</option>
                 <option value="SELL">Sell</option>
               </select>
             </div>
             <div>
-              <label className="text-[8px] text-gray-600 uppercase block mb-0.5">Source</label>
+              <label className="text-[10px] text-gray-600 uppercase block mb-0.5">Source</label>
               <select value={filters.executedBy} onChange={e => handleFilterChange('executedBy', e.target.value)}
-                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-gold/50">
+                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[12px] text-gray-300 focus:outline-none focus:border-gold/50">
                 <option value="">All</option>
                 <option value="ai">AI</option>
                 <option value="manual">Manual</option>
               </select>
             </div>
             <div>
-              <label className="text-[8px] text-gray-600 uppercase block mb-0.5">Exit Reason</label>
+              <label className="text-[10px] text-gray-600 uppercase block mb-0.5">Exit Reason</label>
               <select value={filters.exitReason} onChange={e => handleFilterChange('exitReason', e.target.value)}
-                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-gold/50">
+                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[12px] text-gray-300 focus:outline-none focus:border-gold/50">
                 <option value="">All</option>
                 <option value="TP_HIT">TP Hit</option>
                 <option value="SL_HIT">SL Hit</option>
@@ -194,15 +197,15 @@ export default function TradeTable({ liveLogs = [] }) {
               </select>
             </div>
             <div>
-              <label className="text-[8px] text-gray-600 uppercase block mb-0.5">From</label>
+              <label className="text-[10px] text-gray-600 uppercase block mb-0.5">From</label>
               <input type="date" value={filters.startDate} onChange={e => handleFilterChange('startDate', e.target.value)}
-                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-gold/50"
+                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[12px] text-gray-300 focus:outline-none focus:border-gold/50"
               />
             </div>
             <div>
-              <label className="text-[8px] text-gray-600 uppercase block mb-0.5">To</label>
+              <label className="text-[10px] text-gray-600 uppercase block mb-0.5">To</label>
               <input type="date" value={filters.endDate} onChange={e => handleFilterChange('endDate', e.target.value)}
-                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[10px] text-gray-300 focus:outline-none focus:border-gold/50"
+                className="w-full bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-[12px] text-gray-300 focus:outline-none focus:border-gold/50"
               />
             </div>
           </div>
@@ -215,15 +218,19 @@ export default function TradeTable({ liveLogs = [] }) {
           <div className="w-12 h-12 rounded-xl bg-terminal-card border border-terminal-border flex items-center justify-center mb-3">
             <Minus className="w-5 h-5" />
           </div>
-          <p className="text-sm font-medium">{hasActiveFilters ? 'No trades match filters' : 'No trades yet'}</p>
-          <p className="text-xs text-gray-700 mt-1">{hasActiveFilters ? 'Try adjusting your filters' : 'Enable auto-trading to see activity here'}</p>
+          <p className="text-sm font-medium">
+            {hasActiveFilters ? 'No trades match filters' : symbol ? `No trades for ${symbol} yet` : 'No trades yet'}
+          </p>
+          <p className="text-xs text-gray-700 mt-1">
+            {hasActiveFilters ? 'Try adjusting your filters' : 'Enable auto-trading to see activity here'}
+          </p>
         </div>
       ) : (
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[10px] uppercase tracking-wider text-gray-600 border-b border-terminal-border">
+                <tr className="text-[12px] uppercase tracking-wider text-gray-600 border-b border-terminal-border">
                   <th className="text-left px-3 py-2.5 font-semibold">Date & Time</th>
                   <th className="text-left px-3 py-2.5 font-semibold">Symbol</th>
                   <th className="text-left px-3 py-2.5 font-semibold">Side</th>
@@ -292,7 +299,7 @@ export default function TradeTable({ liveLogs = [] }) {
                         </span>
                       </td>
                       <td className="px-3 py-3 text-center">
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${EXECUTED_BY_STYLES[t.executedBy] || 'bg-gray-500/10 text-gray-400'}`}>
+                        <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${EXECUTED_BY_STYLES[t.executedBy] || 'bg-gray-500/10 text-gray-400'}`}>
                           {EXECUTED_BY_LABEL[t.executedBy] || 'TEST'}
                         </span>
                       </td>
@@ -303,7 +310,7 @@ export default function TradeTable({ liveLogs = [] }) {
                         <div className="flex flex-col items-end">
                           <span>{formatPrice(executedEntry)}</span>
                           {isClosed ? (
-                            <span className="text-[10px] text-gray-500">{formatPrice(executedExit)}</span>
+                            <span className="text-[12px] text-gray-500">{formatPrice(executedExit)}</span>
                           ) : null}
                         </div>
                       </td>
@@ -313,7 +320,7 @@ export default function TradeTable({ liveLogs = [] }) {
                             {formatSignedPrice(entrySlippage)}
                           </span>
                           {isClosed ? (
-                            <span className={typeof exitSlippage === 'number' ? `text-[10px] ${exitSlippage >= 0 ? 'text-bear/70' : 'text-bull/70'}` : 'text-[10px] text-gray-600'}>
+                            <span className={typeof exitSlippage === 'number' ? `text-[12px] ${exitSlippage >= 0 ? 'text-bear/70' : 'text-bull/70'}` : 'text-[12px] text-gray-600'}>
                               {formatSignedPrice(exitSlippage)}
                             </span>
                           ) : null}
@@ -324,11 +331,11 @@ export default function TradeTable({ liveLogs = [] }) {
                           <div className="flex flex-col items-end" title="Total Alpaca fees (entry + exit)">
                             <span className="text-bear/80">−${t.fees.toFixed(2)}</span>
                             {typeof t.entryPrice === 'number' && typeof t.qty === 'number' && t.entryPrice > 0 && (
-                              <span className="text-[9px] text-gray-500">
+                              <span className="text-[11px] text-gray-500">
                                 {((t.fees / (t.entryPrice * t.qty)) * 100).toFixed(3)}%
                               </span>
                             )}
-                          </div>  
+                          </div>
                         ) : (
                           <span className="text-gray-600">{isClosed ? '$0.00' : '--'}</span>
                         )}
@@ -339,11 +346,11 @@ export default function TradeTable({ liveLogs = [] }) {
                             <span className={pnlPositive ? 'text-bull font-semibold' : 'text-bear font-semibold'}>
                               {formatPnl(t.pnl)}
                             </span>
-                            <span className={`text-[10px] ${pnlPositive ? 'text-bull/70' : 'text-bear/70'}`}>
+                            <span className={`text-[12px] ${pnlPositive ? 'text-bull/70' : 'text-bear/70'}`}>
                               {formatPnlPct(t.pnlPct)}
                             </span>
                             {t.partialTaken && (
-                              <span className="text-[9px] text-yellow-500 mt-0.5" title={`Partial: ${formatPnl(t.partialPnl)} @ ${formatPrice(t.partialPrice)} (${t.partialQty} qty)`}>
+                              <span className="text-[11px] text-yellow-500 mt-0.5" title={`Partial: ${formatPnl(t.partialPnl)} @ ${formatPrice(t.partialPrice)} (${t.partialQty} qty)`}>
                                 📐 Partial: {formatPnl(t.partialPnl)}
                               </span>
                             )}
@@ -354,14 +361,14 @@ export default function TradeTable({ liveLogs = [] }) {
                       </td>
                       <td className="px-3 py-3 text-center">
                         <div className="flex flex-col items-center gap-0.5">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${STATUS_STYLES[status] || 'bg-gray-500/10 text-gray-400'}`}>
+                          <span className={`px-1.5 py-0.5 rounded text-[12px] font-bold ${STATUS_STYLES[status] || 'bg-gray-500/10 text-gray-400'}`}>
                             {status}
                           </span>
                           {exitTag && (
-                            <span className="text-[9px] text-gray-500 font-mono">{exitTag}</span>
+                            <span className="text-[11px] text-gray-500 font-mono">{exitTag}</span>
                           )}
                           {t.partialTaken && (
-                            <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-yellow-500/10 text-yellow-400">PARTIAL TP</span>
+                            <span className="px-1 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400">PARTIAL TP</span>
                           )}
                         </div>
                       </td>
@@ -369,7 +376,7 @@ export default function TradeTable({ liveLogs = [] }) {
                         {(() => {
                           const tid = t._id;
                           if (!tid || !t.orderId) {
-                            return <span className="text-gray-700 text-[9px]">—</span>;
+                            return <span className="text-gray-700 text-[11px]">—</span>;
                           }
                           const state = verifyState[tid] || 'idle';
                           const details = verifyDetails[tid];
@@ -384,7 +391,7 @@ export default function TradeTable({ liveLogs = [] }) {
                                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-bull/15 hover:bg-bull/25 transition-colors"
                               >
                                 <ShieldCheck className="w-3 h-3 text-bull" />
-                                <span className="text-[9px] text-bull font-semibold">OK</span>
+                                <span className="text-[11px] text-bull font-semibold">OK</span>
                               </button>
                             );
                           }
@@ -400,7 +407,7 @@ export default function TradeTable({ liveLogs = [] }) {
                                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-bear/15 hover:bg-bear/25 transition-colors"
                               >
                                 <ShieldAlert className="w-3 h-3 text-bear" />
-                                <span className="text-[9px] text-bear font-semibold">{mismatches.length}</span>
+                                <span className="text-[11px] text-bear font-semibold">{mismatches.length}</span>
                               </button>
                             );
                           }
@@ -409,7 +416,7 @@ export default function TradeTable({ liveLogs = [] }) {
                               <button
                                 onClick={() => handleVerify(tid)}
                                 title={details?.error || 'Verify failed'}
-                                className="text-[9px] text-yellow-500 hover:text-yellow-400"
+                                className="text-[11px] text-yellow-500 hover:text-yellow-400"
                               >
                                 retry
                               </button>
@@ -419,7 +426,7 @@ export default function TradeTable({ liveLogs = [] }) {
                             <button
                               onClick={() => handleVerify(tid)}
                               title="Verify against Alpaca"
-                              className="px-1.5 py-0.5 rounded text-[9px] text-gray-400 hover:text-white hover:bg-terminal-hover transition-colors border border-terminal-border"
+                              className="px-1.5 py-0.5 rounded text-[11px] text-gray-400 hover:text-white hover:bg-terminal-hover transition-colors border border-terminal-border"
                             >
                               verify
                             </button>
@@ -427,7 +434,7 @@ export default function TradeTable({ liveLogs = [] }) {
                         })()}
                       </td>
                       <td className="px-3 py-3 text-right">
-                        <span className="font-mono text-[10px] text-gray-600 bg-terminal-bg px-1.5 py-0.5 rounded">
+                        <span className="font-mono text-[12px] text-gray-600 bg-terminal-bg px-1.5 py-0.5 rounded">
                           {t.orderId ? t.orderId.substring(0, 10) : 'N/A'}
                         </span>
                       </td>
@@ -441,7 +448,7 @@ export default function TradeTable({ liveLogs = [] }) {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="px-4 py-2.5 border-t border-terminal-border flex items-center justify-between">
-              <span className="text-[10px] text-gray-500">
+              <span className="text-[12px] text-gray-500">
                 Page {page} of {totalPages} ({total} trades)
               </span>
               <div className="flex items-center gap-1">
@@ -462,7 +469,7 @@ export default function TradeTable({ liveLogs = [] }) {
                     <button
                       key={p}
                       onClick={() => fetchTrades(p)}
-                      className={`w-6 h-6 rounded text-[10px] font-bold transition-colors ${
+                      className={`w-6 h-6 rounded text-[12px] font-bold transition-colors ${
                         p === page ? 'bg-gold/20 text-gold' : 'text-gray-500 hover:text-gray-300 hover:bg-terminal-hover'
                       }`}
                     >
@@ -505,13 +512,11 @@ export default function TradeTable({ liveLogs = [] }) {
 
 // ── Verify details drawer: slides down from top, click-outside closes ──
 function VerifyModal({ tradeId, state, details, onClose, onRetry }) {
-  // Mount animation: false on first render, flip to true on next tick
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const t = requestAnimationFrame(() => setOpen(true));
     return () => cancelAnimationFrame(t);
   }, []);
-  // Esc to close
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') handleClose();
@@ -523,7 +528,7 @@ function VerifyModal({ tradeId, state, details, onClose, onRetry }) {
 
   const handleClose = () => {
     setOpen(false);
-    setTimeout(onClose, 250); // match transition duration
+    setTimeout(onClose, 250);
   };
 
   const stop = (e) => e.stopPropagation();
@@ -592,7 +597,6 @@ function VerifyModal({ tradeId, state, details, onClose, onRetry }) {
         )}
         {(state === 'match' || state === 'mismatch') && details?.trade && details?.alpaca && (
           <div className="p-6 space-y-5 max-w-5xl mx-auto">
-            {/* Side-by-side comparison */}
             <div className="grid grid-cols-3 gap-4 text-[13px] font-mono">
               <div className="text-[12px] uppercase text-gray-500 font-semibold">Field</div>
               <div className="text-[12px] uppercase text-gray-500 font-semibold">DB (TradeX)</div>
@@ -642,7 +646,6 @@ function VerifyModal({ tradeId, state, details, onClose, onRetry }) {
               />
             </div>
 
-            {/* Timing — DB vs Alpaca side-by-side */}
             <div className="pt-3 border-t border-terminal-border">
               <div className="grid grid-cols-3 gap-3 text-[13px] font-mono">
                 <div className="text-[12px] uppercase text-gray-500 font-semibold">Time</div>
@@ -669,7 +672,6 @@ function VerifyModal({ tradeId, state, details, onClose, onRetry }) {
               </div>
             </div>
 
-            {/* Mismatches */}
             {details.mismatches?.length > 0 && (
               <div className="pt-3 border-t border-terminal-border">
                 <div className="text-[12px] uppercase text-bear font-semibold mb-2">

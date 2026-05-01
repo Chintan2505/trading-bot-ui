@@ -71,19 +71,19 @@ function ActivityItem({ item }) {
 
         <div className="flex items-center gap-2 mt-0.5">
           {item.rsi && (
-            <span className="text-[10px] text-gray-500">
+            <span className="text-[12px] text-gray-500">
               RSI <span className={`font-mono ${
                 parseFloat(item.rsi) < 30 ? 'text-[#0ecb81]' : parseFloat(item.rsi) > 70 ? 'text-[#f6465d]' : 'text-gray-400'
               }`}>{item.rsi}</span>
             </span>
           )}
           {item.price && (
-            <span className="text-[10px] text-gray-500">
+            <span className="text-[12px] text-gray-500">
               @ <span className="font-mono text-gray-400">${Number(item.price).toFixed(2)}</span>
             </span>
           )}
           {item.emaTrend && (
-            <span className={`text-[10px] ${
+            <span className={`text-[12px] ${
               item.emaTrend === 'BULLISH' ? 'text-[#0ecb81]' : item.emaTrend === 'BEARISH' ? 'text-[#f6465d]' : 'text-gray-600'
             }`}>
               {item.emaTrend}
@@ -93,7 +93,7 @@ function ActivityItem({ item }) {
 
         {item.orderId && (
           <div className="mt-1">
-            <span className="text-[9px] font-mono text-gray-600 bg-gray-800/80 px-1.5 py-0.5 rounded">
+            <span className="text-[11px] font-mono text-gray-600 bg-gray-800/80 px-1.5 py-0.5 rounded">
               #{item.orderId.substring(0, 12)}
             </span>
           </div>
@@ -101,7 +101,7 @@ function ActivityItem({ item }) {
       </div>
 
       {/* Timestamp */}
-      <span className="text-[9px] text-gray-600 flex-shrink-0 font-mono">
+      <span className="text-[11px] text-gray-600 flex-shrink-0 font-mono">
         {item.timestamp ? format(new Date(item.timestamp), 'HH:mm:ss') : ''}
       </span>
     </div>

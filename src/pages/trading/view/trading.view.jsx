@@ -86,7 +86,7 @@ const QtyDollarInputs = ({ qty, currentPrice, onQtyChange }) => {
           className="w-full bg-terminal-bg border border-terminal-border rounded-lg px-2.5 py-1.5 text-sm font-mono text-white focus:outline-none focus:border-gold/50 transition-colors"
         />
         {currentPrice > 0 && parseFloat(qtyStr) > 0 && (
-          <div className="text-[9px] font-mono text-gray-500">
+          <div className="text-[11px] font-mono text-gray-500">
             ≈ ${(currentPrice * parseFloat(qtyStr)).toFixed(2)}
           </div>
         )}
@@ -117,7 +117,7 @@ function PnLStatsPanel({ stats }) {
   if (!stats) {
     return (
       <div className="p-3 border-b border-terminal-border flex-shrink-0">
-        <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-2">
+        <span className="text-[12px] text-gray-500 uppercase tracking-wider font-semibold block mb-2">
           P&amp;L Stats
         </span>
         <div className="text-[11px] text-gray-600">No trades yet</div>
@@ -136,11 +136,11 @@ function PnLStatsPanel({ stats }) {
   return (
     <div className="p-3 border-b border-terminal-border flex-shrink-0">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+        <span className="text-[12px] text-gray-500 uppercase tracking-wider font-semibold">
           P&amp;L Stats
         </span>
         <div
-          className={`flex items-center gap-1 text-[10px] font-bold ${isProfit ? "text-bull" : "text-bear"}`}
+          className={`flex items-center gap-1 text-[12px] font-bold ${isProfit ? "text-bull" : "text-bear"}`}
         >
           {isProfit ? (
             <TrendingUp className="w-3 h-3" />
@@ -158,7 +158,7 @@ function PnLStatsPanel({ stats }) {
           isProfit ? "bg-bull/5 border-bull/20" : "bg-bear/5 border-bear/20"
         }`}
       >
-        <div className="text-[9px] uppercase text-gray-500 font-semibold mb-0.5">
+        <div className="text-[11px] uppercase text-gray-500 font-semibold mb-0.5">
           Total Profit / Loss
         </div>
         <div
@@ -167,7 +167,7 @@ function PnLStatsPanel({ stats }) {
           {isProfit ? "+" : ""}${totalPnl.toFixed(2)}
         </div>
         <div
-          className={`text-[10px] font-mono ${isProfit ? "text-bull/70" : "text-bear/70"}`}
+          className={`text-[12px] font-mono ${isProfit ? "text-bull/70" : "text-bear/70"}`}
         >
           {isProfit ? "+" : ""}
           {totalPnlPct.toFixed(2)}%
@@ -175,7 +175,7 @@ function PnLStatsPanel({ stats }) {
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+      <div className="grid grid-cols-2 gap-1.5 text-[12px]">
         <Stat
           label="Today"
           value={`${isTodayProfit ? "+" : ""}$${todayPnl.toFixed(2)}`}
@@ -214,14 +214,14 @@ function Stat({ label, value, sub, color, icon: Icon }) {
         : "text-white";
   return (
     <div className="p-1.5 rounded bg-terminal-bg border border-terminal-border">
-      <div className="flex items-center gap-1 text-[9px] uppercase text-gray-500 font-semibold">
+      <div className="flex items-center gap-1 text-[11px] uppercase text-gray-500 font-semibold">
         {Icon && <Icon className="w-2.5 h-2.5" />}
         {label}
       </div>
       <div className={`text-[12px] font-mono font-bold ${colorClass}`}>
         {value}
       </div>
-      {sub && <div className="text-[9px] text-gray-500 font-mono">{sub}</div>}
+      {sub && <div className="text-[11px] text-gray-500 font-mono">{sub}</div>}
     </div>
   );
 }
@@ -431,7 +431,7 @@ export default function TradingView({
                     />
                   </form>
                   <div className="px-2 pb-2">
-                    <p className="text-[10px] uppercase tracking-wider text-gray-600 px-2 py-1">
+                    <p className="text-[12px] uppercase tracking-wider text-gray-600 px-2 py-1">
                       Popular
                     </p>
                     <div className="grid grid-cols-2 gap-1">
@@ -461,7 +461,7 @@ export default function TradingView({
                 Alpaca's native bracket SL/TP trigger use. */}
             <div className="hidden md:flex items-center gap-2.5">
               <span
-                className="text-[10px] uppercase text-gray-500 font-semibold"
+                className="text-[12px] uppercase text-gray-500 font-semibold"
                 title="Last Trade — same reference Alpaca uses to trigger SL/TP brackets"
               >
                 Last (trigger)
@@ -482,7 +482,7 @@ export default function TradingView({
                 {priceChangePct.toFixed(2)}%)
               </div>
               {liveQuote && (
-                <div className="hidden lg:flex items-center gap-1.5 text-[10px] font-mono text-gray-400">
+                <div className="hidden lg:flex items-center gap-1.5 text-[12px] font-mono text-gray-400">
                   <span>
                     Bid: <span className="text-bull">{liveQuote.bid.toFixed(2)}</span>
                   </span>
@@ -502,7 +502,7 @@ export default function TradingView({
             {/* Last trade */}
             {tradeLogs.length > 0 && (
               <div
-                className={`hidden lg:flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold ${
+                className={`hidden lg:flex items-center gap-1 px-2 py-1 rounded-md text-[12px] font-bold ${
                   tradeLogs[0].decision === "BUY"
                     ? "bg-bull/10 text-bull border border-bull/20"
                     : "bg-bear/10 text-bear border border-bear/20"
@@ -518,7 +518,7 @@ export default function TradingView({
             )}
 
             <div
-              className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium ${
+              className={`flex items-center gap-1 px-2 py-1 rounded-full text-[12px] font-medium ${
                 connectionStatus === "connected"
                   ? "bg-bull/10 text-bull"
                   : "bg-bear/10 text-bear"
@@ -589,7 +589,7 @@ export default function TradingView({
                 <PanelLeftOpen className="w-4 h-4" />
                 <History className="w-4 h-4" />
                 <span
-                  className="text-[9px] uppercase tracking-widest font-semibold"
+                  className="text-[11px] uppercase tracking-widest font-semibold"
                   style={{
                     writingMode: "vertical-rl",
                     transform: "rotate(180deg)",
@@ -604,7 +604,7 @@ export default function TradingView({
                 <div className="h-8 border-b border-terminal-border flex items-center justify-between px-2 flex-shrink-0 bg-terminal-card/50">
                   <div className="flex items-center gap-1.5">
                     <History className="w-3 h-3 text-gray-500" />
-                    <span className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold">
+                    <span className="text-[12px] uppercase tracking-widest text-gray-500 font-semibold">
                       History
                     </span>
                   </div>
@@ -637,12 +637,12 @@ export default function TradingView({
         {false && leftSidebarOpen && (
           <aside className="w-44 flex-shrink-0 border-r border-terminal-border bg-terminal-card/30 overflow-hidden hidden lg:block">
             <div className="p-2.5">
-              <h3 className="text-[9px] uppercase tracking-widest text-gray-600 font-semibold mb-2 px-0.5">
+              <h3 className="text-[11px] uppercase tracking-widest text-gray-600 font-semibold mb-2 px-0.5">
                 🤖 AI Decision
               </h3>
               <div className="space-y-1.5">
                 {!geminiStatus?.analyzedAt ? (
-                  <div className="text-[9px] text-gray-600">
+                  <div className="text-[11px] text-gray-600">
                     Waiting for AI analysis...
                   </div>
                 ) : (
@@ -679,10 +679,10 @@ export default function TradingView({
                         {geminiStatus.confidence}%
                       </span>
                     </div>
-                    <p className="text-[8px] text-gray-400 leading-tight">
+                    <p className="text-[10px] text-gray-400 leading-tight">
                       {geminiStatus.reason}
                     </p>
-                    <div className="pt-1 border-t border-terminal-border text-[8px] text-gray-600 space-y-0.5">
+                    <div className="pt-1 border-t border-terminal-border text-[10px] text-gray-600 space-y-0.5">
                       <div className="flex justify-between">
                         <span>Calls</span>
                         <span>{geminiStatus.totalCalls || 0}</span>
@@ -699,7 +699,7 @@ export default function TradingView({
 
             {/* Quick Symbols */}
             <div className="p-2.5 border-t border-terminal-border">
-              <h3 className="text-[9px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 px-0.5">
+              <h3 className="text-[11px] uppercase tracking-widest text-gray-600 font-semibold mb-1.5 px-0.5">
                 Quick Switch
               </h3>
               <div className="grid grid-cols-2 gap-1">
@@ -707,7 +707,7 @@ export default function TradingView({
                   <button
                     key={sym}
                     onClick={() => handleWatchlistClick(sym)}
-                    className={`px-1.5 py-1 rounded text-[10px] font-medium transition-colors ${
+                    className={`px-1.5 py-1 rounded text-[12px] font-medium transition-colors ${
                       sym === activeSymbol
                         ? "bg-gold/10 text-gold border border-gold/20"
                         : "text-gray-500 hover:text-white hover:bg-terminal-hover"
@@ -761,7 +761,7 @@ export default function TradingView({
             >
               Trades
               {tradeLogs.length > 0 && (
-                <span className="w-4 h-4 rounded-full bg-gold/20 text-gold text-[9px] flex items-center justify-center font-bold">
+                <span className="w-4 h-4 rounded-full bg-gold/20 text-gold text-[11px] flex items-center justify-center font-bold">
                   {tradeLogs.length}
                 </span>
               )}
@@ -827,7 +827,7 @@ export default function TradingView({
           ) : activeTab === "trades" ? (
             <div className="flex-1 overflow-auto p-4 space-y-4">
               <TradeStatsPanel stats={tradeStats} />
-              <TradeTable liveLogs={tradeLogs} />
+              <TradeTable liveLogs={tradeLogs} symbol={activeSymbol} />
             </div>
           ) : null}
         </main>
@@ -842,11 +842,11 @@ export default function TradingView({
             {/* Price Header */}
             <div className="p-3 border-b border-terminal-border flex-shrink-0">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                <span className="text-[12px] text-gray-500 uppercase tracking-wider font-semibold">
                   {activeSymbol}
                 </span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                  className={`text-[12px] px-1.5 py-0.5 rounded font-semibold ${
                     isUp ? "bg-bull/10 text-bull" : "bg-bear/10 text-bear"
                   }`}
                 >
@@ -859,14 +859,14 @@ export default function TradingView({
               >
                 ${currentPrice.toFixed(2)}
                 <span
-                  className="ml-2 text-[10px] uppercase text-gray-500 font-semibold tracking-wider"
+                  className="ml-2 text-[12px] uppercase text-gray-500 font-semibold tracking-wider"
                   title="Last Trade — same reference Alpaca uses to trigger SL/TP"
                 >
                   Last (trigger)
                 </span>
               </div>
               {liveQuote && (
-                <div className="mt-1 text-[10px] font-mono text-gray-400 leading-relaxed">
+                <div className="mt-1 text-[12px] font-mono text-gray-400 leading-relaxed">
                   Bid: <span className="text-bull">{liveQuote.bid.toFixed(2)}</span>
                   {" | "}
                   Ask: <span className="text-bear">{liveQuote.ask.toFixed(2)}</span>
@@ -874,7 +874,7 @@ export default function TradingView({
                   Spread: {(liveQuote.ask - liveQuote.bid).toFixed(2)}
                 </div>
               )}
-              <div className="mt-1 text-[9px] text-gray-500 italic leading-tight">
+              <div className="mt-1 text-[11px] text-gray-500 italic leading-tight">
                 SL/TP trigger on Last Trade (Alpaca server-side). Fill price = Bid/Ask.
               </div>
             </div>
@@ -882,11 +882,11 @@ export default function TradingView({
             {/* Bot Control */}
             <div className="p-3 border-b border-terminal-border flex-shrink-0">
               <div className="flex items-center justify-between mb-2.5">
-                <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                <span className="text-[12px] text-gray-500 uppercase tracking-wider font-semibold">
                   Scalping Bot
                 </span>
                 <div
-                  className={`flex items-center gap-1.5 text-[10px] font-medium ${
+                  className={`flex items-center gap-1.5 text-[12px] font-medium ${
                     isAutoTrading ? "text-bull" : "text-gray-600"
                   }`}
                 >
@@ -931,7 +931,7 @@ export default function TradingView({
               </button>
 
               <div
-                className={`mt-1.5 flex items-center justify-center gap-1.5 text-[10px] ${
+                className={`mt-1.5 flex items-center justify-center gap-1.5 text-[12px] ${
                   isAutoTrading ? "text-bull" : "text-gray-600"
                 }`}
               >
@@ -945,15 +945,15 @@ export default function TradingView({
               {scalpPositionState.isOpen && activeScalpLevels && (
                 <div className="mt-2.5 p-2.5 rounded-lg bg-gold/10 border border-gold/30">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold text-gold flex items-center gap-1">
+                    <span className="text-[12px] font-bold text-gold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
                       POSITION OPEN ({activeScalpLevels.side})
                     </span>
-                    <span className="text-[9px] text-gray-500 font-mono">
+                    <span className="text-[11px] text-gray-500 font-mono">
                       qty {activeScalpLevels.qty || scalpSettings.qty}
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-1 text-[9px] mb-2">
+                  <div className="grid grid-cols-3 gap-1 text-[11px] mb-2">
                     <div>
                       <div className="text-gray-500">Entry</div>
                       <div className="text-gold font-mono font-bold">
@@ -985,7 +985,7 @@ export default function TradingView({
               )}
               {scalpPositionState.pendingOrder && (
                 <div className="mt-2 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-center">
-                  <span className="text-[10px] font-bold text-blue-400">
+                  <span className="text-[12px] font-bold text-blue-400">
                     ORDER PENDING...
                   </span>
                 </div>
@@ -994,18 +994,18 @@ export default function TradingView({
 
             {/* Scalping Settings */}
             <div className="p-3 border-b border-terminal-border flex-shrink-0">
-              <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-2">
+              <span className="text-[12px] text-gray-500 uppercase tracking-wider font-semibold block mb-2">
                 Scalping Settings
               </span>
               <div className="space-y-2">
                 {/* Auto SL/TP Toggle */}
                 <div className="p-2 rounded-lg bg-terminal-bg border border-terminal-border">
-                  <label className="flex items-center justify-between cursor-pointer text-[10px]">
+                  <label className="flex items-center justify-between cursor-pointer text-[12px]">
                     <div className="flex flex-col">
                       <span className="text-gray-300 font-semibold">
                         🤖 Auto SL/TP
                       </span>
-                      <span className="text-[8px] text-gray-600">
+                      <span className="text-[10px] text-gray-600">
                         {scalpSettings.autoSlTp
                           ? "AI decides SL & TP levels"
                           : "Manual / ATR-based levels"}
@@ -1050,7 +1050,7 @@ export default function TradingView({
                       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-mono text-bull/60 pointer-events-none">%</span>
                     </div>
                     {currentPrice > 0 && !scalpSettings.autoSlTp && parseFloat(scalpSettings.takeProfitPct) > 0 && (
-                      <div className="text-[10px] font-mono text-bull/70">
+                      <div className="text-[12px] font-mono text-bull/70">
                         +{scalpSettings.takeProfitPct}% → $
                         {(
                           currentPrice *
@@ -1081,7 +1081,7 @@ export default function TradingView({
                       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-mono text-bear/60 pointer-events-none">%</span>
                     </div>
                     {currentPrice > 0 && !scalpSettings.autoSlTp && parseFloat(scalpSettings.stopLossPct) > 0 && (
-                      <div className="text-[10px] font-mono text-bear/70">
+                      <div className="text-[12px] font-mono text-bear/70">
                         −{scalpSettings.stopLossPct}% → $
                         {(
                           currentPrice *
@@ -1122,12 +1122,12 @@ export default function TradingView({
                 {/* ── Smart features toggles ── */}
                 <div className="p-2 rounded-lg bg-terminal-bg border border-terminal-border space-y-2">
                   {!scalpSettings.partialTpEnabled && (
-                    <label className="flex items-center justify-between cursor-pointer text-[10px]">
+                    <label className="flex items-center justify-between cursor-pointer text-[12px]">
                       <div className="flex flex-col">
                         <span className="text-gray-300 font-semibold">
                           🔒 Trailing Stop
                         </span>
-                        <span className="text-[8px] text-gray-600">
+                        <span className="text-[10px] text-gray-600">
                           Move SL to break-even at half-TP
                         </span>
                       </div>
@@ -1145,12 +1145,12 @@ export default function TradingView({
                     </label>
                   )}
 
-                  <label className="flex items-center justify-between cursor-pointer text-[10px]">
+                  <label className="flex items-center justify-between cursor-pointer text-[12px]">
                     <div className="flex flex-col">
                       <span className="text-gray-300 font-semibold">
                         📐 Partial Take Profit
                       </span>
-                      <span className="text-[8px] text-gray-600">
+                      <span className="text-[10px] text-gray-600">
                         Close 50% at half-TP, SL → break-even
                       </span>
                     </div>
@@ -1172,7 +1172,7 @@ export default function TradingView({
 
             {/* Gemini AI Status — only in AI mode */}
             <div className="p-3 border-b border-terminal-border flex-shrink-0">
-              <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold block mb-2">
+              <span className="text-[12px] text-gray-500 uppercase tracking-wider font-semibold block mb-2">
                 🤖 Gemini AI
               </span>
               <div className="p-2.5 rounded-lg bg-terminal-bg border border-terminal-border space-y-2">
@@ -1204,10 +1204,10 @@ export default function TradingView({
                     {geminiStatus?.confidence || 0}%
                   </span>
                 </div>
-                <div className="text-[9px] text-gray-400 leading-relaxed">
+                <div className="text-[11px] text-gray-400 leading-relaxed">
                   {geminiStatus?.reason || "Waiting for first signal..."}
                 </div>
-                <div className="flex items-center justify-between text-[8px] text-gray-600 font-mono">
+                <div className="flex items-center justify-between text-[10px] text-gray-600 font-mono">
                   <span>
                     {geminiStatus?.totalCalls || 0} calls ·{" "}
                     {geminiStatus?.totalBlocked || 0} blocked
@@ -1226,11 +1226,11 @@ export default function TradingView({
               <div className="px-3 py-2 border-b border-terminal-border flex items-center justify-between bg-terminal-card/40 sticky top-0 z-10">
                 <div className="flex items-center gap-1.5">
                   <Activity className="w-3 h-3 text-gold" />
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                  <span className="text-[12px] text-gray-500 uppercase tracking-wider font-semibold">
                     Activity Feed
                   </span>
                 </div>
-                <span className="text-[10px] text-gray-600 font-mono">
+                <span className="text-[12px] text-gray-600 font-mono">
                   {botActivities.length} event
                   {botActivities.length !== 1 ? "s" : ""}
                 </span>
@@ -1255,7 +1255,7 @@ export default function TradingView({
 function FilterInput({ label, type, value, onChange }) {
   return (
     <div className="space-y-1">
-      <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+      <label className="text-[12px] uppercase tracking-wider text-gray-500 font-semibold">
         {label}
       </label>
       <input
@@ -1271,7 +1271,7 @@ function FilterInput({ label, type, value, onChange }) {
 function FilterSelect({ label, value, onChange, options }) {
   return (
     <div className="space-y-1">
-      <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+      <label className="text-[12px] uppercase tracking-wider text-gray-500 font-semibold">
         {label}
       </label>
       <select

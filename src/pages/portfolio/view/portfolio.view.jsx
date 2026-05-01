@@ -88,7 +88,7 @@ export default function PortfolioView({
       {positions.length > 0 && (
         <div className="px-6 py-3 border-b border-terminal-border flex items-center gap-6">
           <div>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+            <span className="text-[12px] uppercase tracking-wider text-gray-500 font-semibold">
               Total Value
             </span>
             <div className="text-sm font-mono font-bold text-white">
@@ -97,7 +97,7 @@ export default function PortfolioView({
             </div>
           </div>
           <div>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+            <span className="text-[12px] uppercase tracking-wider text-gray-500 font-semibold">
               Unrealized P&L
             </span>
             <div
@@ -147,7 +147,7 @@ export default function PortfolioView({
                   ].map((h) => (
                     <th
                       key={h}
-                      className="text-left text-[10px] uppercase tracking-wider text-gray-500 font-semibold py-2.5 px-3"
+                      className="text-left text-[12px] uppercase tracking-wider text-gray-500 font-semibold py-2.5 px-3"
                     >
                       {h}
                     </th>
@@ -176,7 +176,7 @@ export default function PortfolioView({
                       </td>
                       <td className="py-2.5 px-3">
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                          className={`text-[12px] font-bold px-2 py-0.5 rounded ${
                             pos.side === "long"
                               ? "bg-bull/10 text-bull"
                               : "bg-bear/10 text-bear"
@@ -223,7 +223,7 @@ export default function PortfolioView({
                         <button
                           onClick={() => handleClose(pos.symbol)}
                           disabled={closingSymbol === pos.symbol}
-                          className="px-2.5 py-1 rounded-lg text-[10px] font-semibold text-bear border border-bear/30 bg-bear/5 hover:bg-bear/15 transition-colors disabled:opacity-50"
+                          className="px-2.5 py-1 rounded-lg text-[12px] font-semibold text-bear border border-bear/30 bg-bear/5 hover:bg-bear/15 transition-colors disabled:opacity-50"
                         >
                           {closingSymbol === pos.symbol
                             ? "Closing..."

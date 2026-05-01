@@ -92,7 +92,7 @@ export default function AccountView({ account, isLoading, refresh, config }) {
 function InfoItem({ label, value, mono, badge, badgeColor, highlight }) {
   return (
     <div>
-      <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold block mb-1">{label}</span>
+      <span className="text-[12px] uppercase tracking-wider text-gray-500 font-semibold block mb-1">{label}</span>
       {badge ? (
         <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
           badgeColor === 'bull' ? 'bg-bull/10 text-bull' : badgeColor === 'bear' ? 'bg-bear/10 text-bear' : 'bg-gray-800 text-gray-400'

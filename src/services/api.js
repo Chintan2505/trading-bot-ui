@@ -103,6 +103,11 @@ export const getTradeStats = async () => {
   return response.data;
 };
 
+export const getStatsBySymbol = async () => {
+  const response = await api.get('/trades/stats-by-symbol');
+  return response.data;
+};
+
 // Verify a single trade's numbers against Alpaca (real fill price, qty, fees)
 export const verifyTrade = async (tradeId) => {
   const response = await api.get(`/trades/${tradeId}/verify`);

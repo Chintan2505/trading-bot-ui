@@ -47,7 +47,7 @@ const StatCard = ({
   <div className="p-2.5 rounded-lg bg-terminal-bg/80 border border-terminal-border hover:border-terminal-border/80 transition-colors">
     <div className="flex items-center gap-1.5 mb-1">
       <Icon className={`w-3 h-3 ${iconColor}`} />
-      <span className="text-[8px] text-gray-500 uppercase tracking-wider font-semibold">
+      <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
         {label}
       </span>
     </div>
@@ -57,7 +57,7 @@ const StatCard = ({
       {value}
     </div>
     {subValue && (
-      <div className="text-[9px] text-gray-600 font-mono mt-0.5">
+      <div className="text-[11px] text-gray-600 font-mono mt-0.5">
         {subValue}
       </div>
     )}
@@ -87,7 +87,7 @@ export default function TradeStatsPanel({ stats }) {
           <button
             key={p}
             onClick={() => setPeriod(p)}
-            className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wide transition-all ${
+            className={`flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-all ${
               period === p
                 ? "bg-gold/15 text-gold border-b-2 border-gold"
                 : "bg-terminal-bg text-gray-600 hover:text-gray-400 hover:bg-terminal-card/50"
@@ -112,7 +112,7 @@ export default function TradeStatsPanel({ stats }) {
               </div>
             )}
             <div>
-              <div className="text-[9px] text-gray-500 uppercase font-semibold">
+              <div className="text-[11px] text-gray-500 uppercase font-semibold">
                 Net P&L
               </div>
               <div
@@ -126,7 +126,7 @@ export default function TradeStatsPanel({ stats }) {
             <div className={`text-lg font-bold font-mono ${winRateColor}`}>
               {fmtPct(winRate)}
             </div>
-            <div className="text-[9px] text-gray-500">win rate</div>
+            <div className="text-[11px] text-gray-500">win rate</div>
           </div>
         </div>
 
@@ -134,12 +134,12 @@ export default function TradeStatsPanel({ stats }) {
         <div className="flex items-center gap-3 mt-2.5 pt-2.5 border-t border-white/5">
           <div className="flex items-center gap-1.5">
             <BarChart3 className="w-3 h-3 text-gray-500" />
-            <span className="text-[10px] text-gray-400">{s.total} trades</span>
+            <span className="text-[12px] text-gray-400">{s.total} trades</span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="text-[10px] font-bold text-bull">{s.wins}W</span>
-            <span className="text-[10px] text-gray-600">/</span>
-            <span className="text-[10px] font-bold text-bear">{s.losses}L</span>
+            <span className="text-[12px] font-bold text-bull">{s.wins}W</span>
+            <span className="text-[12px] text-gray-600">/</span>
+            <span className="text-[12px] font-bold text-bear">{s.losses}L</span>
           </div>
           {s.total > 0 && (
             <div className="flex-1 h-1.5 rounded-full bg-terminal-border overflow-hidden">
@@ -189,7 +189,7 @@ export default function TradeStatsPanel({ stats }) {
         <div className="p-2.5 rounded-lg bg-terminal-bg/80 border border-terminal-border">
           <div className="flex items-center gap-1.5 mb-2">
             <Crosshair className="w-3 h-3 text-blue-400" />
-            <span className="text-[9px] text-gray-500 uppercase tracking-wider font-semibold">
+            <span className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold">
               AI Accuracy
             </span>
           </div>
@@ -199,7 +199,7 @@ export default function TradeStatsPanel({ stats }) {
             >
               {fmtPct(s.aiWinRate)}
             </div>
-            <div className="text-[9px] text-gray-500">
+            <div className="text-[11px] text-gray-500">
               {s.aiTrades} trades by AI
             </div>
             {s.aiTrades > 0 && (
@@ -220,7 +220,7 @@ export default function TradeStatsPanel({ stats }) {
           <div className="p-2.5 rounded-lg bg-terminal-bg/80 border border-terminal-border">
             <div className="flex items-center gap-1.5 mb-2">
               <Shield className="w-3 h-3 text-gray-400" />
-              <span className="text-[9px] text-gray-500 uppercase tracking-wider font-semibold">
+              <span className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold">
                 Exit Breakdown
               </span>
             </div>
@@ -257,7 +257,7 @@ export default function TradeStatsPanel({ stats }) {
                 return (
                   <span
                     key={key}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[9px] font-bold ${color}`}
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-bold ${color}`}
                   >
                     <span>{icon}</span>
                     <span>{label}</span>

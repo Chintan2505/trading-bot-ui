@@ -135,7 +135,7 @@ export default function DashboardView({
                         <div className={`text-sm font-mono font-medium ${isUp ? 'text-bull' : 'text-bear'}`}>
                           {isUp ? '+' : ''}${pl.toFixed(2)}
                         </div>
-                        <div className={`text-[10px] font-mono ${isUp ? 'text-bull' : 'text-bear'}`}>
+                        <div className={`text-[12px] font-mono ${isUp ? 'text-bull' : 'text-bear'}`}>
                           {isUp ? '+' : ''}{plPct.toFixed(2)}%
                         </div>
                       </div>
@@ -171,7 +171,7 @@ export default function DashboardView({
                       </div>
                       <div>
                         <span className="text-sm font-medium text-white">{trade.symbol}</span>
-                        <span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        <span className={`ml-2 text-[12px] font-bold px-1.5 py-0.5 rounded ${
                           trade.decision === 'BUY' ? 'bg-bull/10 text-bull' : trade.decision === 'SELL' ? 'bg-bear/10 text-bear' : 'bg-gray-800 text-gray-400'
                         }`}>
                           {trade.decision}
@@ -180,7 +180,7 @@ export default function DashboardView({
                     </div>
                     <div className="text-right">
                       <div className="text-[11px] text-gray-400 font-mono">RSI {trade.rsi?.toFixed(1) ?? '--'}</div>
-                      <div className="text-[10px] text-gray-600">{new Date(trade.createdAt).toLocaleDateString()}</div>
+                      <div className="text-[12px] text-gray-600">{new Date(trade.createdAt).toLocaleDateString()}</div>
                     </div>
                   </div>
                 ))
